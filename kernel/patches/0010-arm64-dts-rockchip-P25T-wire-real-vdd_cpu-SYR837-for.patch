@@ -1,0 +1,106 @@
+From a2e5e29964db37f23e94e4dc543aba240e9c3098 Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 20:10:36 +0200
+Subject: [PATCH 10/30] arm64: dts: rockchip: P25T: wire real vdd_cpu (SYR837)
+ for CPU DVFS
+
+cpufreq-dt has been silently active since rk3566.dtsi's cpu0_opp_table
+came in via #include, and CONFIG_CPU_FREQ/CPUFREQ_DT/CPUFREQ_DT_PLATDEV
+were already enabled - but with no cpu-supply, only frequency scaled,
+never voltage, so the CPU sits at whatever fixed voltage the bootloader
+set for its max frequency even when idling at 408MHz.
+
+Add the real vdd_cpu chip on this board (confirmed from the stock DT,
+which lists four alternative vdd_cpu parts as a generic Rockchip SDK
+board file - only silergy,syr827 at i2c0 0x40 is actually populated
+here). Values copied verbatim from the stock DT's syr837@40 node
+(min/max/ramp-delay, fcs,suspend-voltage-selector, always-on); the
+stock DT's own regulator-init-microvolt/regulator-initial-state have
+no mainline binding (checked drivers/regulator/core.c, of_regulator.c
+and the fcs,fan53555.yaml binding - not present in any of them) and are
+not carried over, so probing this regulator only reports the chip's
+existing state, never forces a voltage. vin-supply mirrors stock's
+vcc3v8_sys via our existing vcc_sys_dummy.
+
+Wire cpu-supply on &cpu0..&cpu3 (in the shared base file - applies to
+both DTBs, like patch 0009). The existing cpu0_opp_table's voltage range
+(850mV-1.15V) sits well inside this chip's real 712.5mV-1.5V envelope,
+so no OPP table change is needed; the driver for this exact chip family
+(fan53555.c) is already built (CONFIG_REGULATOR_FAN53555=y).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../boot/dts/rockchip/rk3566-teclast-p25t.dts | 52 +++++++++++++++++++
+ 1 file changed, 52 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index b736cfd90..c034f062b 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -348,6 +348,36 @@ &pwm14 {
+ &i2c0 {
+ 	status = "okay";
+ 
++	/*
++	 * Real vdd_cpu chip on this board, confirmed from the stock DT (which
++	 * lists four alternative vdd_cpu parts - generic Rockchip SDK board
++	 * file - only this one is actually populated here). Values copied
++	 * verbatim from the stock DT's syr837@40 node (min/max/ramp-delay,
++	 * fcs,suspend-voltage-selector, always-on); the stock DT's own
++	 * regulator-init-microvolt/regulator-initial-state are Rockchip
++	 * BSP-only properties with no mainline binding, so they are not
++	 * carried over - just reporting the chip's existing state on probe,
++	 * never forcing a voltage. vin-supply matches stock's vcc3v8_sys via
++	 * our existing vcc_sys_dummy. Feeds &cpu0..&cpu3's cpu-supply below,
++	 * for real DVFS on top of the cpufreq-dt scaling already active from
++	 * rk3566.dtsi's cpu0_opp_table. See kernel.org/hardware.org.
++	 */
++	vdd_cpu: regulator@40 {
++		compatible = "silergy,syr827";
++		reg = <0x40>;
++		vin-supply = <&vcc_sys_dummy>;
++		regulator-name = "vdd_cpu";
++		regulator-min-microvolt = <712500>;
++		regulator-max-microvolt = <1500000>;
++		regulator-ramp-delay = <1000>;
++		fcs,suspend-voltage-selector = <1>;
++		regulator-always-on;
++
++		regulator-state-mem {
++			regulator-off-in-suspend;
++		};
++	};
++
+ 	pmic@20 {
+ 		compatible = "rockchip,rk817";
+ 		reg = <0x20>;
+@@ -382,3 +412,25 @@ charger {
+ 		};
+ 	};
+ };
++
++/*
++ * Real DVFS: cpu0_opp_table (rk3566.dtsi) already lists a min/target/max
++ * microvolt triplet per frequency step; without a cpu-supply the OPP core
++ * still lets cpufreq-dt scale frequency (already confirmed active), but
++ * never touches voltage. Wiring vdd_cpu here lets it scale both.
++ */
++&cpu0 {
++	cpu-supply = <&vdd_cpu>;
++};
++
++&cpu1 {
++	cpu-supply = <&vdd_cpu>;
++};
++
++&cpu2 {
++	cpu-supply = <&vdd_cpu>;
++};
++
++&cpu3 {
++	cpu-supply = <&vdd_cpu>;
++};
+-- 
+2.43.0
+

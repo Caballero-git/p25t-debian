@@ -1,0 +1,96 @@
+From 05b3f9a98ad825daa47ffd494a0722bbf327ab79 Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Fri, 25 Sep 2026 16:16:11 +0200
+Subject: [PATCH 05/30] arm64: dts: rockchip: P25T: SDIO Wi-Fi (AIC8800) on
+ sdmmc1
+
+Module supply switch GPIO0_A0 (low = on), WL_REG_ON GPIO0_C0 via
+mmc-pwrseq-simple, vccio4 IO domain in 1.8 V mode. The 32 kHz sleep clock
+(RK817 CLK32KOUT2) is already enabled at reset.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0156c5MfQpFxaYWNNLMrcym9
+---
+ .../boot/dts/rockchip/rk3566-teclast-p25t.dts | 51 +++++++++++++++++++
+ 1 file changed, 51 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index e61a84c7a..0f219dbf7 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -25,6 +25,7 @@ / {
+ 
+ 	aliases {
+ 		mmc1 = &sdmmc0;
++		mmc2 = &sdmmc1;
+ 	};
+ 
+ 	chosen {
+@@ -82,6 +83,30 @@ backlight: backlight {
+ 		power-supply = <&vcc_sys_dummy>;
+ 	};
+ 
++	/*
++	 * Wi-Fi/BT module AIC8800 (SDIO on sdmmc1). From the stock DT and the
++	 * stock mmc-pwrseq driver: GPIO0_A0 switches the module's supply (low =
++	 * on), GPIO0_C0 is WL_REG_ON (high = running). The 32 kHz sleep clock
++	 * comes from RK817 CLK32KOUT2, which is already enabled at reset
++	 * (reg 0xF2 bit 7 = 1), so no PMIC write is needed.
++	 */
++	vcc_wl: regulator-vcc-wl {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc_wl";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		gpio = <&gpio0 RK_PA0 GPIO_ACTIVE_LOW>;
++		startup-delay-us = <100000>;
++		vin-supply = <&vcc_3v3_dummy>;
++	};
++
++	sdio_pwrseq: sdio-pwrseq {
++		compatible = "mmc-pwrseq-simple";
++		reset-gpios = <&gpio0 RK_PC0 GPIO_ACTIVE_LOW>;
++		post-power-on-delay-ms = <50>;
++		power-off-delay-us = <5000>;
++	};
++
+ 	/* Volume keys on SARADC channel 0 (thresholds from the stock DT). */
+ 	adc-keys {
+ 		compatible = "adc-keys";
+@@ -122,6 +147,32 @@ &sdmmc0 {
+ 	status = "okay";
+ };
+ 
++/* SDIO Wi-Fi (AIC8800), 4-bit, 50 MHz like the stock kernel. */
++&sdmmc1 {
++	bus-width = <4>;
++	cap-sd-highspeed;
++	cap-sdio-irq;
++	keep-power-in-suspend;
++	max-frequency = <50000000>;
++	mmc-pwrseq = <&sdio_pwrseq>;
++	non-removable;
++	disable-wp;
++	pinctrl-names = "default";
++	pinctrl-0 = <&sdmmc1_bus4 &sdmmc1_cmd &sdmmc1_clk>;
++	vmmc-supply = <&vcc_wl>;
++	status = "okay";
++};
++
++/*
++ * IO domain vccio4 (SDIO pins) is fed by RK817 LDO1 = 1.8 V (reg 0xCC = 0x30).
++ * Only this one domain is declared, so only its voltage mode is set (1.8 V),
++ * as the stock kernel does.
++ */
++&pmu_io_domains {
++	vccio4-supply = <&vcc_1v8_dummy>;
++	status = "okay";
++};
++
+ &uart2 {
+ 	status = "okay";
+ };
+-- 
+2.43.0
+

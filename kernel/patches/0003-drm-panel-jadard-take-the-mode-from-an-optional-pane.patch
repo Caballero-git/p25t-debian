@@ -1,0 +1,67 @@
+From 1c6c703f1df709558c6e15282e623ba3451ecb4d Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Fri, 2 Oct 2026 14:08:02 +0200
+Subject: [PATCH 03/30] drm/panel: jadard: take the mode from an optional
+ panel-timing node
+
+The P25T panel shows every line shifted by a few pixels with the stock
+timing values (tests/test_18.sh). Finding the right horizontal timing
+by trial means a kernel rebuild per try. Let the device tree override
+the built-in mode instead: if the panel node has a panel-timing child
+(panel-timing.yaml, plus width-mm and height-mm in the panel node), use
+it via of_get_drm_panel_display_mode(). Without the node nothing
+changes. On the tablet the values can then be changed in the DTB with
+fdtput and tried with a reboot.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../gpu/drm/panel/panel-jadard-jd9365da-h3.c   | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/drivers/gpu/drm/panel/panel-jadard-jd9365da-h3.c b/drivers/gpu/drm/panel/panel-jadard-jd9365da-h3.c
+index d1fd5a70a..6cc3fcfc0 100644
+--- a/drivers/gpu/drm/panel/panel-jadard-jd9365da-h3.c
++++ b/drivers/gpu/drm/panel/panel-jadard-jd9365da-h3.c
+@@ -49,6 +49,9 @@ struct jadard {
+ 	struct regulator *vdd;
+ 	struct regulator *vccio;
+ 	struct gpio_desc *reset;
++	/* optional override from a DT panel-timing node */
++	struct drm_display_mode dt_mode;
++	bool use_dt_mode;
+ };
+ 
+ #define JD9365DA_DCS_SWITCH_PAGE	0xe0
+@@ -158,6 +161,9 @@ static int jadard_get_modes(struct drm_panel *panel,
+ {
+ 	struct jadard *jadard = panel_to_jadard(panel);
+ 
++	if (jadard->use_dt_mode)
++		return drm_connector_helper_get_modes_fixed(connector, &jadard->dt_mode);
++
+ 	if (jadard->dsi->lanes == 2)
+ 		return drm_connector_helper_get_modes_fixed(connector, jadard->desc->mode_2ln);
+ 	else
+@@ -3239,6 +3245,18 @@ static int jadard_dsi_probe(struct mipi_dsi_device *dsi)
+ 	if (ret < 0)
+ 		return dev_err_probe(dev, ret, "failed to get orientation\n");
+ 
++	/*
++	 * An optional panel-timing node (panel-timing.yaml; needs width-mm
++	 * and height-mm in the panel node) replaces the built-in mode, so the
++	 * timing can be tuned on a board without rebuilding the kernel.
++	 */
++	if (!of_get_drm_panel_display_mode(dev->of_node, &jadard->dt_mode, NULL)) {
++		jadard->dt_mode.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
++		jadard->use_dt_mode = true;
++		dev_info(dev, "mode from DT panel-timing: " DRM_MODE_FMT "\n",
++			 DRM_MODE_ARG(&jadard->dt_mode));
++	}
++
+ 	ret = drm_panel_of_backlight(&jadard->panel);
+ 	if (ret)
+ 		return ret;
+-- 
+2.43.0
+

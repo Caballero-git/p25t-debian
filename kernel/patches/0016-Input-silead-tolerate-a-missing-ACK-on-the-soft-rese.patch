@@ -1,0 +1,81 @@
+From 14a684e1ffca316b9e78f512ea822a017f866c3e Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Tue, 29 Sep 2026 21:08:38 +0200
+Subject: [PATCH 16/30] Input: silead - tolerate a missing ACK on the
+ soft-reset command
+
+On a Teclast P25T (GSL3673, RK3566, i2c-rk3x) probe always fails with
+"Registers clear error -6". Replaying silead_ts_init() by hand with
+i2c-tools shows exactly one failing transfer: the first write, SILEAD_REG_RESET
+<- SILEAD_CMD_RESET, gets a NACK. The chip answers an ID read immediately
+afterwards, and the remaining writes (TOUCH_NR, CLOCK, RESET <- START) are
+all ACKed. The chip acts on the reset command before acknowledging it.
+
+The vendor gslX680 drivers never check this write's result. Treat -ENXIO
+on this one write as success; a chip that is really not responding still
+fails the following writes and the final status check in
+silead_ts_setup().
+
+Tested on hardware (2026-09-30): with this patch and the tablet's own
+firmware table, probe succeeds and touch input works; the NACK still
+occurs on every probe ("soft reset not ACKed, continuing", twice).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0156c5MfQpFxaYWNNLMrcym9
+---
+ drivers/input/touchscreen/silead.c | 26 +++++++++++++++++++++++---
+ 1 file changed, 23 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/input/touchscreen/silead.c b/drivers/input/touchscreen/silead.c
+index 44d714110..519595071 100644
+--- a/drivers/input/touchscreen/silead.c
++++ b/drivers/input/touchscreen/silead.c
+@@ -312,12 +312,33 @@ static void silead_ts_read_data(struct i2c_client *client)
+ 	input_sync(input);
+ }
+ 
+-static int silead_ts_init(struct i2c_client *client)
++/*
++ * Send the soft-reset command. Some chips (seen on a GSL3673 in a Teclast
++ * P25T) act on CMD_RESET before acknowledging it, so the controller reports
++ * a NACK (-ENXIO) although the reset happened: the chip answers normally
++ * right afterwards and every following write is ACKed. Vendor drivers never
++ * check this write's result. Tolerate exactly that case; a chip that really
++ * is not working is still caught by the later writes and by the final
++ * status check in silead_ts_setup().
++ */
++static int silead_ts_send_reset(struct i2c_client *client)
+ {
+ 	int error;
+ 
+ 	error = i2c_smbus_write_byte_data(client, SILEAD_REG_RESET,
+ 					  SILEAD_CMD_RESET);
++	if (error == -ENXIO) {
++		dev_info(&client->dev, "soft reset not ACKed, continuing\n");
++		error = 0;
++	}
++	return error;
++}
++
++static int silead_ts_init(struct i2c_client *client)
++{
++	int error;
++
++	error = silead_ts_send_reset(client);
+ 	if (error)
+ 		goto i2c_write_err;
+ 	usleep_range(SILEAD_CMD_SLEEP_MIN, SILEAD_CMD_SLEEP_MAX);
+@@ -351,8 +372,7 @@ static int silead_ts_reset(struct i2c_client *client)
+ {
+ 	int error;
+ 
+-	error = i2c_smbus_write_byte_data(client, SILEAD_REG_RESET,
+-					  SILEAD_CMD_RESET);
++	error = silead_ts_send_reset(client);
+ 	if (error)
+ 		goto i2c_write_err;
+ 	usleep_range(SILEAD_CMD_SLEEP_MIN, SILEAD_CMD_SLEEP_MAX);
+-- 
+2.43.0
+

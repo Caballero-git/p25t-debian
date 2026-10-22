@@ -1,0 +1,230 @@
+From 6d151919aad69a99f3b193f81eb121e5c41eab0c Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 11:05:51 +0200
+Subject: [PATCH 13/30] arm64: dts: rockchip: P25T: wire RK817 audio codec +
+ i2s1_8ch
+
+Enable analog audio via the RK817's built-in codec, feeding the
+board's speakers, headphone jack, and (unconfirmed) mic.
+
+- pmic@20 (rk817): add clocks/clock-names="mclk" (&cru
+  I2S1_MCLKOUT_TX, assigned-clock-parent CLK_I2S1_8CH_TX),
+  pinctrl-0 = <&i2s1m0_mclk>, #sound-dai-cells = <0>. Mainline's
+  rk817_codec.c has no separate codec{} subnode - these properties
+  live directly on the parent MFD node
+  (devm_clk_get(dev.parent, "mclk")), matching
+  rockchip,rk817.yaml's own top-level example.
+- regulators: add vccio_acodec (LDO_REG4, 3.3V, always-on/boot-on),
+  matching stock's own regulator-name for this rail.
+- pmu_io_domains: wire vccio1-supply = <&vccio_acodec>, matching
+  stock.
+- New top-level rk817-sound simple-audio-card node (cpu = i2s1_8ch,
+  codec = rk817, mclk-fs = 256), matching stock's own mclk-fs value
+  (256 = 48kHz * 256 = 12.288MHz, also stock's assigned-clock-rate).
+- &i2s1_8ch: enable with the i2s1m0 pinctrl group (single data line
+  each way) + rockchip,trcm-sync-tx-only, already fully wired for
+  clocks/DMA/resets in rk356x-base.dtsi, just disabled by default.
+
+Stock's codec{} subnode (Firmware/dt/boot-0-0x6c0fe00.dts) carries
+many BSP-only properties with no mainline binding: checked against
+Documentation/devicetree/bindings/mfd/rockchip,rk817.yaml, whose
+codec: schema recognises only rockchip,mic-in-differential. Stock's
+raw mclk clock ID (0x1a3 = 419) has no matching macro in mainline's
+rk3568-cru.h - only an unrelated reset macro shares that number - so
+it does not correspond to any distinct clock in mainline's
+clk-rk3568.c and cannot be carried over.
+
+All values instead come from a real, working mainline board using
+the identical RK817 + i2s1_8ch combination
+(arch/arm64/boot/dts/rockchip/rk3566-quartz64-a.dts), cross-checked
+against Documentation/devicetree/bindings/sound/rockchip,i2s-tdm.yaml's
+own worked example (identical i2s1m0 + trcm-sync-tx-only pattern).
+
+spk-ctl-gpios deliberately dropped: stock's value (&gpio3 2, i.e.
+GPIO3_A2) is the exact same physical pin already confirmed on real
+hardware to be the SC7A20 accelerometer's IRQ line (patch 0013) - one
+pin cannot serve both, and the quartz64-a reference board wires no
+speaker-amp GPIO either. Practical effect on the built-in speaker
+(vs. the headphone jack) is unconfirmed until tested on hardware.
+Also dropped for the same BSP-only reason: hp-volume, spk-volume,
+capture-volume, use-ext-amplifier. rockchip,mic-in-differential
+omitted (unknown wiring, defaults to single-ended).
+
+Needs CONFIG_SOUND, CONFIG_SND, CONFIG_SND_SOC,
+CONFIG_SND_SOC_ROCKCHIP_I2S_TDM, CONFIG_SND_SOC_RK817,
+CONFIG_SND_SIMPLE_CARD enabled (all were unset - CONFIG_SOUND itself
+was off, hiding the whole submenu).
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0156c5MfQpFxaYWNNLMrcym9
+---
+ .../boot/dts/rockchip/rk3566-teclast-p25t.dts | 113 ++++++++++++++++--
+ 1 file changed, 106 insertions(+), 7 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index 0b88f2d94..ff6777cfd 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -154,6 +154,28 @@ battery: battery {
+ 				       <3724000 20>, <3677000 15>, <3608000 10>, <3543000 5>,
+ 				       <3400000 0>;
+ 	};
++
++	/*
++	 * Analog audio via the RK817 codec (patch 0015). "Analog RK817" name
++	 * and mclk-fs=256 (48kHz*256=12.288MHz) copied from the real
++	 * rk3566-quartz64-a.dts reference board - same codec, same i2s1_8ch
++	 * cpu-side controller. See the pmic@20/rk817 node comment above and
++	 * &i2s1_8ch below for the clock/pin details.
++	 */
++	rk817-sound {
++		compatible = "simple-audio-card";
++		simple-audio-card,name = "Analog RK817";
++		simple-audio-card,format = "i2s";
++		simple-audio-card,mclk-fs = <256>;
++
++		simple-audio-card,cpu {
++			sound-dai = <&i2s1_8ch>;
++		};
++
++		simple-audio-card,codec {
++			sound-dai = <&rk817>;
++		};
++	};
+ };
+ 
+ &saradc {
+@@ -192,10 +214,11 @@ &sdmmc1 {
+ 
+ /*
+  * IO domain vccio4 (SDIO pins) is fed by RK817 LDO1 = 1.8 V (reg 0xCC = 0x30).
+- * Only this one domain is declared, so only its voltage mode is set (1.8 V),
+- * as the stock kernel does.
++ * vccio1 (audio codec IO, patch 0015) added the same way stock has it:
++ * fed by RK817 LDO_REG4 (vccio_acodec, 3.3 V) - see pmic@20/regulators.
+  */
+ &pmu_io_domains {
++	vccio1-supply = <&vccio_acodec>;
+ 	vccio4-supply = <&vcc_1v8_dummy>;
+ 	status = "okay";
+ };
+@@ -333,10 +356,11 @@ &pwm14 {
+ 
+ /*
+  * I2C0: RK817 PMIC @0x20 (BOOST/OTG_SWITCH regulators + charger/battery,
+- * patches 0008-0009; DCDC_REG2/vdd_gpu, patch 0014) and SYR837 @0x40
+- * (vdd_cpu, patch 0011). The RK817 node itself stays deliberately minimal
+- * beyond that (no codec/pwrkey node - both came up for free once the chip
+- * had any node at all). Values copied verbatim from the stock Android
++ * patches 0008-0009; DCDC_REG2/vdd_gpu, patch 0014; audio codec +
++ * vccio_acodec, patch 0015) and SYR837 @0x40 (vdd_cpu, patch 0011). The
++ * RK817 node itself stays deliberately minimal beyond that (no pwrkey
++ * node - came up for free once the chip had any node at all). Values
++ * copied verbatim from the stock Android
+  * device tree (Firmware/dt/boot-0-0x6c0fe00.dts):
+  *   - BOOST: regulator-always-on there too - stock never turns this rail
+  *     off, we are not switching on anything stock treats as off.
+@@ -381,12 +405,52 @@ regulator-state-mem {
+ 		};
+ 	};
+ 
+-	pmic@20 {
++	rk817: pmic@20 {
+ 		compatible = "rockchip,rk817";
+ 		reg = <0x20>;
+ 		interrupt-parent = <&gpio0>;
+ 		interrupts = <3 8>; /* GPIO0_A3, IRQ_TYPE_LEVEL_LOW - matches stock */
+ 
++		/*
++		 * Audio codec (patch 0015). Mainline's rk817_codec.c has no
++		 * separate DT subnode - #sound-dai-cells/clocks live directly on
++		 * this node, matching sound/soc/codecs/rk817_codec.c's
++		 * devm_clk_get(dev.parent, "mclk") and the rockchip,rk817.yaml
++		 * binding's own top-level example. Stock's codec{} subnode
++		 * (clocks=<&cru 0x1a3>, pinctrl-0, hp-volume/spk-volume/
++		 * capture-volume/use-ext-amplifier/spk-ctl-gpios) is Rockchip
++		 * BSP-only: rockchip,rk817.yaml's codec: schema only recognises
++		 * rockchip,mic-in-differential, and clock ID 0x1a3=419 has no
++		 * matching macro anywhere in mainline's rk3568-cru.h (only an
++		 * unrelated reset macro shares that number) - it doesn't exist
++		 * as a distinct clock in mainline's clk-rk3568.c at all, so it
++		 * cannot be carried over. Values below copied instead from a
++		 * real, working mainline board with the same chip combo
++		 * (arch/arm64/boot/dts/rockchip/rk3566-quartz64-a.dts), and
++		 * cross-checked against Documentation/devicetree/bindings/sound/
++		 * rockchip,i2s-tdm.yaml's own worked example, which uses the
++		 * identical &i2s1_8ch + i2s1m0 + trcm-sync-tx-only combination.
++		 *
++		 * spk-ctl-gpios deliberately NOT carried over: stock's value
++		 * (<&gpio3 2 ...>, GPIO3_A2) is the exact same physical pin
++		 * already confirmed on real hardware to be the SC7A20
++		 * accelerometer's IRQ line (patch 0013) - a single pin cannot
++		 * serve both. The quartz64-a reference board doesn't wire any
++		 * speaker-amp GPIO either, so this is omitted rather than
++		 * guessed. Practical effect, unconfirmed until tested: the
++		 * built-in speaker's amplifier may need to be enabled some
++		 * other way (or may default on/off in hardware) - headphone
++		 * jack output should be unaffected either way. See
++		 * hardware.org/todo.org.
++		 */
++		assigned-clocks = <&cru I2S1_MCLKOUT_TX>;
++		assigned-clock-parents = <&cru CLK_I2S1_8CH_TX>;
++		clocks = <&cru I2S1_MCLKOUT_TX>;
++		clock-names = "mclk";
++		pinctrl-names = "default";
++		pinctrl-0 = <&i2s1m0_mclk>;
++		#sound-dai-cells = <0>;
++
+ 		regulators {
+ 			rk817_boost: BOOST {
+ 				regulator-name = "boost";
+@@ -431,6 +495,24 @@ regulator-state-mem {
+ 					regulator-off-in-suspend;
+ 				};
+ 			};
++
++			/*
++			 * Audio codec IO/analog supply (patch 0015). Stock's own
++			 * LDO_REG4 is named "vccio_acodec" and is the vccio1-supply
++			 * for &pmu_io_domains below - same always-on/boot-on
++			 * treatment as stock, no BSP-only properties on this one.
++			 */
++			vccio_acodec: LDO_REG4 {
++				regulator-name = "vccio_acodec";
++				regulator-min-microvolt = <3300000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-always-on;
++				regulator-boot-on;
++
++				regulator-state-mem {
++					regulator-off-in-suspend;
++				};
++			};
+ 		};
+ 
+ 		charger {
+@@ -534,3 +616,20 @@ &gpu {
+ 	status = "okay";
+ 	mali-supply = <&vdd_gpu>;
+ };
++
++/*
++ * I2S1 (patch 0015): cpu side of the RK817 audio codec (see rk817-sound
++ * and pmic@20/rk817 above). Already fully wired in rk356x-base.dtsi
++ * (clocks, DMA, resets) - just disabled by default, same shape as &gpu
++ * was. pinctrl-0 (single data line each way) + rockchip,trcm-sync-tx-only
++ * copied verbatim from Documentation/devicetree/bindings/sound/
++ * rockchip,i2s-tdm.yaml's own worked example and from the real
++ * rk3566-quartz64-a.dts reference board, which uses this exact
++ * controller+codec combination.
++ */
++&i2s1_8ch {
++	pinctrl-names = "default";
++	pinctrl-0 = <&i2s1m0_sclktx &i2s1m0_lrcktx &i2s1m0_sdi0 &i2s1m0_sdo0>;
++	rockchip,trcm-sync-tx-only;
++	status = "okay";
++};
+-- 
+2.43.0
+

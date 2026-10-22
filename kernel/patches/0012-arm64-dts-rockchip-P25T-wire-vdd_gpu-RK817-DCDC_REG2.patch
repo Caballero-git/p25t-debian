@@ -1,0 +1,135 @@
+From ff740a445e8a0ece3f2d4dc4517cade2c425660a Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 23:36:26 +0200
+Subject: [PATCH 12/30] arm64: dts: rockchip: P25T: wire vdd_gpu (RK817
+ DCDC_REG2) for GPU DVFS
+
+GPU (Panfrost/Mali Bifrost) has an OPP table already wired in
+rk3568.dtsi (gpu_opp_table, 200-800 MHz, via &gpu's own
+operating-points-v2 override) but no real voltage rail behind it, and
+the &gpu node itself is left status = "disabled" in rk356x-base.dtsi -
+the same "OPP table exists but nothing supplies the voltage" situation
+&cpu0-3 were in before patch 0011.
+
+Unlike vdd_cpu (a separate SYR837 chip on i2c0), the real chip here is
+RK817's own DCDC_REG2 - confirmed from the stock DT, where this rail is
+already named "vdd_gpu" (regulator-name) and referenced by the stock
+GPU node's own mali-supply property. Per the standing rule, an RK817
+register-level change was proposed and explicitly approved before
+being made.
+
+Added:
+  - vdd_gpu: DCDC_REG2 {} inside the existing pmic@20/regulators block.
+    Values copied verbatim from the stock DT: min 500000uV, max
+    1350000uV, ramp-delay 6001 (also the same generic-SDK boilerplate
+    value used for RK817's own vdd_arm/vdd_logic example in
+    Documentation/devicetree/bindings/mfd/rockchip,rk817.yaml),
+    regulator-always-on AND regulator-boot-on (stock has both on this
+    rail, unlike BOOST). Stock's own regulator-init-microvolt (900000)
+    and regulator-initial-mode (2) are Rockchip BSP-only properties
+    with no mainline binding - checked against
+    /schemas/regulator/regulator.yaml, all rockchip,rk817.yaml
+    references for this node - so dropped, same treatment as
+    vdd_cpu's equivalent stock properties in patch 0011.
+  - &gpu { status = "okay"; mali-supply = <&vdd_gpu>; }; - mali-supply
+    is the property name Documentation/devicetree/bindings/gpu/
+    arm,mali-bifrost.yaml defines for this exact compatible
+    ("rockchip,rk3568-mali"), matching stock's own GPU node's property
+    name for the same purpose. No changes needed to
+    operating-points-v2 - rk3568.dtsi already wires that onto &gpu.
+
+Built cleanly (DTC lines only), decompiled and checked: DCDC_REG2's
+phandle matches &gpu's mali-supply reference, status = "okay",
+operating-points-v2 present (inherited), all regulator values exact.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0156c5MfQpFxaYWNNLMrcym9
+---
+ .../boot/dts/rockchip/rk3566-teclast-p25t.dts | 52 +++++++++++++++++--
+ 1 file changed, 47 insertions(+), 5 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index 561f6425a..0b88f2d94 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -333,11 +333,11 @@ &pwm14 {
+ 
+ /*
+  * I2C0: RK817 PMIC @0x20 (BOOST/OTG_SWITCH regulators + charger/battery,
+- * patches 0008-0009) and SYR837 @0x40 (vdd_cpu, patch 0011). The RK817
+- * node itself stays deliberately minimal beyond that (no codec/pwrkey
+- * node - both came up for free once the chip had any node at all).
+- * Values copied verbatim from the stock Android device tree
+- * (Firmware/dt/boot-0-0x6c0fe00.dts):
++ * patches 0008-0009; DCDC_REG2/vdd_gpu, patch 0014) and SYR837 @0x40
++ * (vdd_cpu, patch 0011). The RK817 node itself stays deliberately minimal
++ * beyond that (no codec/pwrkey node - both came up for free once the chip
++ * had any node at all). Values copied verbatim from the stock Android
++ * device tree (Firmware/dt/boot-0-0x6c0fe00.dts):
+  *   - BOOST: regulator-always-on there too - stock never turns this rail
+  *     off, we are not switching on anything stock treats as off.
+  *   - OTG_SWITCH: stock leaves it switchable (its own USB HAL enables it
+@@ -345,6 +345,8 @@ &pwm14 {
+  *     enable it through &usb2phy0_otg's phy-supply in the host-mode DTB
+  *     variant (see rk3566-teclast-p25t-usbhost.dts) - the normal DTB
+  *     never references it, so it stays unused/off there, same as today.
++ *   - DCDC_REG2/vdd_gpu: stock has both regulator-always-on AND
++ *     regulator-boot-on on this one (unlike BOOST) - mirrored exactly.
+  */
+ &i2c0 {
+ 	status = "okay";
+@@ -403,6 +405,32 @@ rk817_boost: BOOST {
+ 			rk817_otg_switch: OTG_SWITCH {
+ 				regulator-name = "otg_switch";
+ 			};
++
++			/*
++			 * GPU rail. Values copied verbatim from the stock DT's own
++			 * DCDC_REG2 (regulator-name is "vdd_gpu" there too, confirming
++			 * this is the right rail). Stock's regulator-init-microvolt
++			 * (900000) and regulator-initial-mode (2) are Rockchip
++			 * BSP-only properties with no mainline binding (checked
++			 * against /schemas/regulator/regulator.yaml, which is all
++			 * rockchip,rk817.yaml references for this node) - dropped,
++			 * same treatment as vdd_cpu's equivalent stock properties.
++			 * Feeds &gpu's mali-supply below, for Panfrost GPU DVFS on
++			 * top of rk3568.dtsi's existing gpu_opp_table. See
++			 * kernel.org/hardware.org.
++			 */
++			vdd_gpu: DCDC_REG2 {
++				regulator-name = "vdd_gpu";
++				regulator-min-microvolt = <500000>;
++				regulator-max-microvolt = <1350000>;
++				regulator-ramp-delay = <6001>;
++				regulator-always-on;
++				regulator-boot-on;
++
++				regulator-state-mem {
++					regulator-off-in-suspend;
++				};
++			};
+ 		};
+ 
+ 		charger {
+@@ -492,3 +520,17 @@ accelerometer@19 {
+ 				"0", "0", "1";
+ 	};
+ };
++
++/*
++ * GPU (Panfrost/Mali Bifrost). Disabled by default in rk356x-base.dtsi;
++ * rk3568.dtsi already wires operating-points-v2 = <&gpu_opp_table> onto
++ * &gpu (200-800 MHz, no changes needed there). We only need to turn it on
++ * and wire the real rail - mali-supply is the property name the mainline
++ * binding (Documentation/devicetree/bindings/gpu/arm,mali-bifrost.yaml,
++ * matching our exact compatible "rockchip,rk3568-mali") expects, and
++ * stock's own GPU node uses the same property name for the same purpose.
++ */
++&gpu {
++	status = "okay";
++	mali-supply = <&vdd_gpu>;
++};
+-- 
+2.43.0
+

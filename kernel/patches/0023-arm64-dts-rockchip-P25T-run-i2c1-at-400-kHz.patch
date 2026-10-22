@@ -1,0 +1,45 @@
+From 767ab2caa703ec0515086b50e193753b6b1d6651 Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Mon, 5 Oct 2026 09:41:50 +0200
+Subject: [PATCH 23/30] arm64: dts: rockchip: P25T: run i2c1 at 400 kHz
+
+The built-in Silead touchscreen driver uploads its firmware (37 KB, sent
+as 4653 separate four-byte writes) during kernel start-up, and the boot
+waits for it. At the default 100 kHz that took ~3 s.
+
+Set i2c1 to 400 kHz (I2C fast mode). Measured with tests/test_20.sh:
+the touchscreen comes up at 1.6 s instead of 4.1 s, kernel boot time
+8.4 s -> 5.8 s. Touch and the SC7A20 accelerometer on the same bus work
+unchanged (the PineTab2 runs its SC7A20 bus at 400 kHz as well; the
+stock Android touch driver used 350 kHz). Tried first by editing the
+DTB on the card with fdtput.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index c3b3e3504..8513e41c6 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -696,6 +696,15 @@ &cpu3 {
+  * i2c1 also feeds the touchscreen (Silead GSL3673 @0x40) - see below.
+  */
+ &i2c1 {
++	/*
++	 * 400 kHz (patch 0027): the touchscreen firmware upload (37 KB as
++	 * 4653 four-byte writes) held the boot up for ~3 s at the default
++	 * 100 kHz; at 400 kHz it takes ~1.1 s (tests/test_20.sh, kernel
++	 * boot 8.4 s -> 5.8 s). Touch and the SC7A20 accelerometer work at
++	 * this speed (the PineTab2 runs its SC7A20 bus at 400 kHz too); the
++	 * stock Android driver used 350 kHz.
++	 */
++	clock-frequency = <400000>;
+ 	status = "okay";
+ 
+ 	/*
+-- 
+2.43.0
+

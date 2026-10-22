@@ -1,0 +1,176 @@
+From 9d0953ccfa5a728b7e78f4b98bcce0146b9974bb Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Wed, 21 Oct 2026 09:24:06 +0200
+Subject: [PATCH 30/30] arm64: dts: rockchip: P25T: front camera DTB variants
+
+Two new DTBs with the front camera instead of the rear one (one CSI-2
+host, one camera at a time):
+- rk3566-teclast-p25t-front.dtb: the base DT (USB-C device mode);
+- rk3566-teclast-p25t-front-usbhost.dtb: the usbhost DT (USB-C host
+  mode), so that a wired keyboard works while the front camera is used.
+Both include rk3566-teclast-p25t-front-camera.dtsi: GC02M2 on i2c2 at
+0x10, reset GPIO4_B0 (active high), powerdown GPIO4_B3 (active low),
+same MCLK, power domain and supplies as the rear GC5035, 1 data lane on
+the D-PHY's lanes 2-3 (rockchip,split-lanes-2-3). The rear sensor node
+is disabled and its port removed. Values from the stock Android device
+tree.
+
+The sensor is mounted turned by 180 degrees (without flips a picture
+comes out upside down and mirrored; with both sensor flips it is
+upright), described with rotation = <180> so that applications
+(libcamera) turn on both flips.
+
+Use one of them in place of rk3566-teclast-p25t.dtb to get the front
+camera; the base and usbhost DTBs are unchanged.
+
+P25T tests: p25t-sway tests/ 07-10 (by hand), 11, 20-22.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0156c5MfQpFxaYWNNLMrcym9
+---
+ arch/arm64/boot/dts/rockchip/Makefile         |  2 +
+ .../rk3566-teclast-p25t-front-camera.dtsi     | 68 +++++++++++++++++++
+ .../rk3566-teclast-p25t-front-usbhost.dts     |  9 +++
+ .../rockchip/rk3566-teclast-p25t-front.dts    |  8 +++
+ .../boot/dts/rockchip/rk3566-teclast-p25t.dts |  5 +-
+ 5 files changed, 90 insertions(+), 2 deletions(-)
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-front-camera.dtsi
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-front-usbhost.dts
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-front.dts
+
+diff --git a/arch/arm64/boot/dts/rockchip/Makefile b/arch/arm64/boot/dts/rockchip/Makefile
+index 1e2d310f0..0293e3667 100644
+--- a/arch/arm64/boot/dts/rockchip/Makefile
++++ b/arch/arm64/boot/dts/rockchip/Makefile
+@@ -131,6 +131,8 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-rock-3c.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-soquartz-blade.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-teclast-p25t.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-teclast-p25t-usbhost.dtb
++dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-teclast-p25t-front.dtb
++dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-teclast-p25t-front-usbhost.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-soquartz-cm4.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-soquartz-model-a.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-box-demo.dtb
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-front-camera.dtsi b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-front-camera.dtsi
+new file mode 100644
+index 000000000..50bf18199
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-front-camera.dtsi
+@@ -0,0 +1,68 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * P25T, front camera instead of the rear one: included by the
++ * rk3566-teclast-p25t-front.dts (USB-C device mode) and
++ * rk3566-teclast-p25t-front-usbhost.dts (USB-C host mode) variants, after
++ * their base DT. Use one of them in place of rk3566-teclast-p25t.dtb. The
++ * SoC has one CSI-2 host, so one camera at a time: here the rear GC5035
++ * is left out and the front GalaxyCore GC02M2 (2 MP, 1 MIPI lane) feeds
++ * the CSI-2 host -> VICAP -> /dev/videoN instead.
++ *
++ * From the stock Android DT: gc02m2 on i2c2 at 0x10, reset GPIO4_B0
++ * (active high), pwdn GPIO4_B3 (active low), same MCLK (CLK_CIF_OUT on
++ * GPIO4_C0), power domain and supplies as the rear camera, data on the
++ * D-PHY's second half (lanes 2-3, split mode, "csi2-dphy2").
++ */
++
++&csi_dphy {
++	/* D-PHY lanes 2-3 + clock lane 1 -> CSI-2 host */
++	rockchip,split-lanes-2-3;
++};
++
++&csi_input {
++	data-lanes = <1>;
++	remote-endpoint = <&gc02m2_output>;
++};
++
++&gc5035 {
++	status = "disabled";
++	/delete-node/ port;
++};
++
++&i2c2 {
++	gc02m2: camera-sensor@10 {
++		compatible = "galaxycore,gc02m2";
++		reg = <0x10>;
++		clocks = <&cru CLK_CIF_OUT>;
++		assigned-clocks = <&cru CLK_CIF_OUT>;
++		assigned-clock-rates = <24000000>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&cif_clk &gc02m2_ctrl>;
++		power-domains = <&power RK3568_PD_VI>;
++		reset-gpios = <&gpio4 RK_PB0 GPIO_ACTIVE_HIGH>;
++		powerdown-gpios = <&gpio4 RK_PB3 GPIO_ACTIVE_LOW>;
++		avdd-supply = <&vcc2v8_dvp>;
++		dovdd-supply = <&vcc1v8_dvp>;
++		dvdd-supply = <&vcc_camera>;
++		orientation = <0>; /* front */
++		/* mounted upside down: both flips give the upright picture */
++		rotation = <180>;
++
++		port {
++			gc02m2_output: endpoint {
++				data-lanes = <1>;
++				link-frequencies = /bits/ 64 <336000000>;
++				remote-endpoint = <&csi_input>;
++			};
++		};
++	};
++};
++
++&pinctrl {
++	camera {
++		gc02m2_ctrl: gc02m2-ctrl {
++			rockchip,pins = <4 RK_PB0 RK_FUNC_GPIO &pcfg_pull_none>,
++					<4 RK_PB3 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++	};
++};
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-front-usbhost.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-front-usbhost.dts
+new file mode 100644
+index 000000000..86689a4ce
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-front-usbhost.dts
+@@ -0,0 +1,9 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * P25T with the front camera, USB-C in host mode (as the usbhost DT), so
++ * that a wired keyboard works while the front camera is in use.
++ */
++
++/dts-v1/;
++#include "rk3566-teclast-p25t-usbhost.dts"
++#include "rk3566-teclast-p25t-front-camera.dtsi"
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-front.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-front.dts
+new file mode 100644
+index 000000000..f812373a8
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-front.dts
+@@ -0,0 +1,8 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * P25T with the front camera, USB-C in device mode (as the normal DT).
++ */
++
++/dts-v1/;
++#include "rk3566-teclast-p25t.dts"
++#include "rk3566-teclast-p25t-front-camera.dtsi"
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index 99c987f29..292cd56f8 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -937,8 +937,9 @@ spk_amp_enable_h: spk-amp-enable-h {
+  * clock domain freezes) - exact wiring unknown. Stock routes the
+  * sensor through the D-PHY in split mode (csi2-dphy1 = lanes 0-1)
+  * straight into the ISP; the CSI-2 host and VICAP are disabled there.
+- * The front GC02M2 sits on lanes 2-3 (split mode, not in mainline) and
+- * is not described.
++ * The front GC02M2 sits on lanes 2-3 (split mode); it is described in
++ * rk3566-teclast-p25t-front-camera.dtsi, which the -front and
++ * -front-usbhost variants use in place of the rear camera.
+  */
+ / {
+ 	csi: csi@fdfb0000 {
+-- 
+2.43.0
+

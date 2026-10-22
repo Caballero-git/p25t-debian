@@ -1,0 +1,68 @@
+#+TITLE: Debian on the Teclast P25T tablet, from a microSD card
+#+STARTUP: overview
+
+* What this is
+Scripts and kernel patches to build a microSD card that runs Debian 13
+on a Teclast P25T tablet (model P9A6, Rockchip RK3566), with mainline
+Linux 7.3.
+
+The tablet's Android is never touched: the card boots instead of it, and
+without the card the tablet starts Android as before. Everything on the
+card is built from this repository and from sources downloaded at fixed
+versions; nothing downloaded is stored here.
+
+*Status (2026-10-22): being built up step by step.* The directions below
+stop where the work has arrived; each step is added once it has been
+done from a blank start. A card cannot be made yet from this repository
+alone.
+
+* What you need
+- The tablet: Teclast P25T, model P9A6 (Rockchip RK3566).
+- A microSD card of 8 GB or more (A1 recommended). It will be erased.
+- A USB card reader.
+- A PC (called =pc_linux= here): x86-64, a Debian-family Linux (Debian,
+  Ubuntu, Linux Mint), =sudo= rights, internet access, and free disk
+  space (about 2 GB for the kernel source so far; the total is measured
+  as the steps are added).
+- Packages, so far:
+  #+begin_example
+  sudo apt install git
+  #+end_example
+
+* Building a card
+Choose a work folder, written =<WORK>= below (for example =~/P25T=).
+Everything goes into it: this repository as =<WORK>/p25t-debian=, the
+kernel source as =<WORK>/linux=, and what the scripts build in
+=<WORK>/p25t-debian/build/= (never committed). Run the scripts as your
+normal user; any script that needs root asks for =sudo= itself. Each
+script explains itself in its header.
+
+0. Get this repository:
+   #+begin_example
+   cd <WORK>
+   git clone https://github.com/Caballero-git/p25t-debian.git
+   #+end_example
+1. Kernel source: Linux 7.3 with the P25T patches.
+   #+begin_example
+   bash <WORK>/p25t-debian/tools/get_kernel.sh
+   #+end_example
+   It downloads the 7.3 release from kernel.org (a shallow git clone of
+   the tag =v7.3=: about 300 MB, 2 GB on disk) into =<WORK>/linux=,
+   creates the branch =p25t= and applies the 30 patches of
+   =kernel/patches/= (see its README). It ends with
+   =OK: ... branch p25t = Linux v7.3 + 30 P25T patches=.
+
+Next steps, being added: building the kernel, the boot loader and the
+start-up system, Debian, and writing the card.
+
+* Repository map
+| Path             | What                                         |
+|------------------+----------------------------------------------|
+| =kernel/patches/= | the 30 P25T patches for Linux 7.3            |
+| =tools/=          | scripts run on =pc_linux=                    |
+| =build/=          | made by the scripts, never committed         |
+
+* Licence
+GPL-2.0-only, the licence of the Linux kernel: the full text is in
+=LICENSE=, and every script carries the line
+=SPDX-License-Identifier: GPL-2.0-only=.

@@ -1,0 +1,140 @@
+From 4d485d10d82502fd783e6c8bc4f2e54f4b7902a8 Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Thu, 1 Oct 2026 09:34:08 +0200
+Subject: [PATCH 19/30] arm64: dts: rockchip: P25T: power the camera IO bank,
+ rear torch LED
+
+The stock device tree keeps RK817 LDO_REG8 "vcc1v8_dvp" (1.8 V) always
+on as the vccio6 IO-domain supply. Until now our boot left it at its
+reset state (off), so the GPIO4 pins in that bank could not drive
+anything: the torch enable (GPIO4_A6), the vcc_camera switch (GPIO4_A7)
+and, later, the camera sensors' reset/power-down pins.
+
+- RK817 LDO_REG8: 1.8 V, always-on, values verbatim from stock; set as
+  vccio6-supply of &pmu_io_domains.
+- vcc_camera: fixed regulator switched by GPIO4_A7, always-on as in
+  stock.
+- rear camera torch: stock "flash-rgb13h" uses only enable-gpio
+  GPIO4_A6, active high (no PWM), so it is a plain gpio-leds LED,
+  white:flash.
+
+Tested by hand first (tests/test_13.sh): LDO8 on, GPIO4_A7 + GPIO4_A6
+high -> the torch lights. Without LDO8 (tests/test_11.sh) it does not.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../boot/dts/rockchip/rk3566-teclast-p25t.dts | 69 +++++++++++++++++++
+ 1 file changed, 69 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index 04e61a284..5cd531aab 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -15,6 +15,7 @@
+ 
+ #include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/input/input.h>
++#include <dt-bindings/leds/common.h>
+ #include <dt-bindings/pinctrl/rockchip.h>
+ #include <dt-bindings/soc/rockchip,vop2.h>
+ #include "rk3566.dtsi"
+@@ -162,6 +163,43 @@ battery: battery {
+ 	 * cpu-side controller. See the pmic@20/rk817 node comment above and
+ 	 * &i2s1_8ch below for the clock/pin details.
+ 	 */
++	/*
++	 * Rear camera torch (patch 0022). Stock "flash-rgb13h": enable-gpio
++	 * GPIO4_A6, active high, no PWM ("Unable to get pwm device" in the
++	 * Android log) - a plain on/off LED here:
++	 *   echo 1 > /sys/class/leds/white:flash/brightness
++	 * Needs vcc1v8_dvp (vccio6) and vcc_camera, both below.
++	 */
++	leds {
++		compatible = "gpio-leds";
++		pinctrl-names = "default";
++		pinctrl-0 = <&flash_led_en>;
++
++		led-flash {
++			color = <LED_COLOR_ID_WHITE>;
++			function = LED_FUNCTION_FLASH;
++			gpios = <&gpio4 RK_PA6 GPIO_ACTIVE_HIGH>;
++			default-state = "off";
++		};
++	};
++
++	/*
++	 * Stock "vcc_camera": fixed regulator switched by GPIO4_A7, always on
++	 * in Android. Kept the same here (patch 0022); the cameras will be
++	 * its consumers later.
++	 */
++	vcc_camera: regulator-vcc-camera {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc_camera";
++		gpio = <&gpio4 RK_PA7 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++		pinctrl-names = "default";
++		pinctrl-0 = <&vcc_camera_en>;
++		regulator-always-on;
++		regulator-boot-on;
++		vin-supply = <&vcc1v8_dvp>;
++	};
++
+ 	/*
+ 	 * Built-in speaker (2026-10-01). Stock: rk817 codec "use-ext-amplifier"
+ 	 * with spk-ctl-gpios = GPIO3_A2 (active high): the codec's headphone
+@@ -263,6 +301,7 @@ &sdmmc1 {
+ &pmu_io_domains {
+ 	vccio1-supply = <&vccio_acodec>;
+ 	vccio4-supply = <&vcc_1v8_dummy>;
++	vccio6-supply = <&vcc1v8_dvp>;	/* patch 0022: GPIO4 camera/torch pins */
+ 	status = "okay";
+ };
+ 
+@@ -549,6 +588,26 @@ regulator-state-mem {
+ 					regulator-off-in-suspend;
+ 				};
+ 			};
++
++			/*
++			 * Camera-side IO bank supply (patch 0022). Stock LDO_REG8
++			 * "vcc1v8_dvp", values verbatim: 1.8 V, always-on. It is
++			 * the vccio6-supply of &pmu_io_domains: without it the
++			 * GPIO4 pins of the torch, vcc_camera and the camera
++			 * sensors cannot drive anything. Confirmed by hand with
++			 * tests/test_13.sh (LDO8 on -> torch lights).
++			 */
++			vcc1v8_dvp: LDO_REG8 {
++				regulator-name = "vcc1v8_dvp";
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <1800000>;
++				regulator-always-on;
++				regulator-boot-on;
++
++				regulator-state-mem {
++					regulator-off-in-suspend;
++				};
++			};
+ 		};
+ 
+ 		charger {
+@@ -744,6 +803,16 @@ &tsadc {
+ };
+ 
+ &pinctrl {
++	camera {
++		flash_led_en: flash-led-en {
++			rockchip,pins = <4 RK_PA6 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++
++		vcc_camera_en: vcc-camera-en {
++			rockchip,pins = <4 RK_PA7 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++	};
++
+ 	headphone {
+ 		hp_det: hp-det {
+ 			rockchip,pins = <3 RK_PA1 RK_FUNC_GPIO &pcfg_pull_down>;
+-- 
+2.43.0
+

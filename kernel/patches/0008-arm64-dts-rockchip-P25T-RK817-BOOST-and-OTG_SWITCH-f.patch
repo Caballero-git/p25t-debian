@@ -1,0 +1,109 @@
+From 211756f4f80d2f33e844aacb374594b78a835f1d Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 13:28:10 +0200
+Subject: [PATCH 08/30] arm64: dts: rockchip: P25T: RK817 BOOST and OTG_SWITCH
+ for USB-C VBUS
+
+In host mode the USB-C port needs 5 V on VBUS, which comes from the
+RK817's BOOST converter through its OTG_SWITCH. Describe both
+regulators (values from the stock device tree) and link OTG_SWITCH to
+the USB2 PHY as phy-supply, in the host-mode DTB only.
+
+BOOST is always-on/boot-on only in the host-mode DTB. In the normal DTB
+nothing uses it, so it is left unconstrained as in stock and the
+regulator core switches it off at late boot (no quiescent draw).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019kgfNtsGWnCDNQnFvegC9W
+---
+ .../rockchip/rk3566-teclast-p25t-usbhost.dts  | 22 ++++++++++
+ .../boot/dts/rockchip/rk3566-teclast-p25t.dts | 42 ++++++++++++++++++-
+ 2 files changed, 63 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-usbhost.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-usbhost.dts
+index 937c56ba0..3cb20403c 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-usbhost.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-usbhost.dts
+@@ -17,3 +17,25 @@
+ &usb_host0_xhci {
+ 	dr_mode = "host";
+ };
++
++/*
++ * Power the VBUS pin. OTG_SWITCH (RK817) is otherwise unused - defined in
++ * the base DT but never enabled there. Requesting it here as the PHY's
++ * supply makes the usb2phy driver enable it while (and only while) this
++ * host-mode DTB is active; it goes back to unrequested/off the moment you
++ * switch back to the normal DTB.
++ */
++&usb2phy0_otg {
++	phy-supply = <&rk817_otg_switch>;
++};
++
++/*
++ * BOOST is left unconstrained in the base DT (disabled at late boot in
++ * normal/peripheral mode, since nothing there consumes it). Force it back
++ * on here: OTG_SWITCH's phy-supply link above needs real 5V behind it to
++ * actually gate anything onto the USB-C VBUS pin.
++ */
++&rk817_boost {
++	regulator-always-on;
++	regulator-boot-on;
++};
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index c3e401b5a..7529c47d5 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -304,7 +304,47 @@ &pwm14 {
+ 	status = "okay";
+ };
+ 
+-/* I2C0: RK817 PMIC @0x20, SYR837 @0x40. No child nodes on purpose (read-only probing). */
++/*
++ * I2C0: RK817 PMIC @0x20, SYR837 @0x40 (SYR837 still has no node, read-only
++ * probing only). The RK817 node below is deliberately minimal: only the
++ * two regulators needed to power the USB-C port's VBUS, nothing else on
++ * the chip (no battery/codec/pwrkey/RTC). Values copied verbatim from the
++ * stock Android device tree (Firmware/dt/boot-0-0x6c0fe00.dts):
++ *   - BOOST: regulator-always-on there too - stock never turns this rail
++ *     off, we are not switching on anything stock treats as off.
++ *   - OTG_SWITCH: stock leaves it switchable (its own USB HAL enables it
++ *     only in host role via an extcon we never wired up). We only ever
++ *     enable it through &usb2phy0_otg's phy-supply in the host-mode DTB
++ *     variant (see rk3566-teclast-p25t-usbhost.dts) - the normal DTB
++ *     never references it, so it stays unused/off there, same as today.
++ */
+ &i2c0 {
+ 	status = "okay";
++
++	pmic@20 {
++		compatible = "rockchip,rk817";
++		reg = <0x20>;
++		interrupt-parent = <&gpio0>;
++		interrupts = <3 8>; /* GPIO0_A3, IRQ_TYPE_LEVEL_LOW - matches stock */
++
++		regulators {
++			rk817_boost: BOOST {
++				regulator-name = "boost";
++				regulator-min-microvolt = <4900000>;
++				regulator-max-microvolt = <5400000>;
++				/*
++				 * Left unconstrained on purpose (matches the stock DT,
++				 * which has no always-on flag either): nothing in the
++				 * normal/peripheral DTB consumes this rail, so Linux
++				 * disables it at late boot. The host-mode DTB overrides
++				 * this node back to always-on/boot-on, since OTG_SWITCH's
++				 * phy-supply link needs it live. See hardware.org/todo.org.
++				 */
++			};
++
++			rk817_otg_switch: OTG_SWITCH {
++				regulator-name = "otg_switch";
++			};
++		};
++	};
+ };
+-- 
+2.43.0
+

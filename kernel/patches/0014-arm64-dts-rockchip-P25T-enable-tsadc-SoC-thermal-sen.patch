@@ -1,0 +1,60 @@
+From 26dfb717c90cc09d960357bc5f98da71caad997b Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Sun, 27 Sep 2026 14:24:40 +0200
+Subject: [PATCH 14/30] arm64: dts: rockchip: P25T: enable tsadc SoC thermal
+ sensor
+
+The RK3568 has an on-die temperature sensor (tsadc) already fully wired
+in rk356x-base.dtsi, including a thermal-zones node with CPU and GPU
+zones and trip points - it's just status = "disabled" by default,
+same shape as &gpu and &i2s1_8ch were before their own enable patches.
+
+hw-tshut-mode/polarity copied verbatim from two independent reference
+boards using this SoC (rk3566-quartz64-a.dts, rk3568-qnap-tsx33.dtsi),
+which agree on the same values - this is SoC-internal thermal-shutdown
+wiring, not board-schematic dependent like the RK817 audio pins were.
+
+No kernel .config change needed (CONFIG_ROCKCHIP_THERMAL and
+CONFIG_THERMAL_HWMON were already enabled) and no RK817 involvement -
+DTB-only change. Once booted, temperatures are available directly via
+/sys/class/thermal/thermal_zone*/temp or through the standard `sensors`
+command (lm-sensors package, no sensors-detect probing needed/used).
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0156c5MfQpFxaYWNNLMrcym9
+---
+ .../boot/dts/rockchip/rk3566-teclast-p25t.dts | 20 +++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index ff6777cfd..7444fd3ae 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -633,3 +633,23 @@ &i2s1_8ch {
+ 	rockchip,trcm-sync-tx-only;
+ 	status = "okay";
+ };
++
++/*
++ * SoC thermal sensor (patch 0016). Disabled by default in
++ * rk356x-base.dtsi, same shape as &gpu/&i2s1_8ch above - but here the
++ * thermal-zones node (cpu_thermal using <&tsadc 0>, a gpu thermal zone
++ * using <&tsadc 1>, both with trip points) already exists too, so
++ * nothing else needs wiring. hw-tshut-mode/polarity copied verbatim
++ * from two independent real reference boards that agree on the same
++ * values for this exact SoC - rk3566-quartz64-a.dts and
++ * rk3568-qnap-tsx33.dtsi - this is SoC-internal thermal-shutdown
++ * wiring, not board-schematic dependent like the RK817 audio pins
++ * were, so no board-specific verification needed. No RK817/kernel
++ * .config changes required (CONFIG_ROCKCHIP_THERMAL and
++ * CONFIG_THERMAL_HWMON are already enabled) - DTB-only change.
++ */
++&tsadc {
++	rockchip,hw-tshut-mode = <1>; /* tshut via GPIO, not CRU */
++	rockchip,hw-tshut-polarity = <0>; /* GPIO active-low */
++	status = "okay";
++};
+-- 
+2.43.0
+

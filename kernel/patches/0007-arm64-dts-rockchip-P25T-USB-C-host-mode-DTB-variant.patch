@@ -1,0 +1,60 @@
+From 0b602820be3926f4e0b8130206ca4a682ec0570c Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 08:54:52 +0200
+Subject: [PATCH 07/30] arm64: dts: rockchip: P25T: USB-C host-mode DTB variant
+
+A second DTB, rk3566-teclast-p25t-usbhost.dtb, includes the board file
+and sets dr_mode = "host" on the USB-C controller, for a USB keyboard,
+mouse or receiver. It replaces the normal DTB by a file swap on the card
+(set-usb-role.sh); the gadget console and usb0 are not available while
+it is in use.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019kgfNtsGWnCDNQnFvegC9W
+---
+ arch/arm64/boot/dts/rockchip/Makefile         |  1 +
+ .../rockchip/rk3566-teclast-p25t-usbhost.dts  | 19 +++++++++++++++++++
+ 2 files changed, 20 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-usbhost.dts
+
+diff --git a/arch/arm64/boot/dts/rockchip/Makefile b/arch/arm64/boot/dts/rockchip/Makefile
+index 33d8ab737..1e2d310f0 100644
+--- a/arch/arm64/boot/dts/rockchip/Makefile
++++ b/arch/arm64/boot/dts/rockchip/Makefile
+@@ -130,6 +130,7 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-roc-pc.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-rock-3c.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-soquartz-blade.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-teclast-p25t.dtb
++dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-teclast-p25t-usbhost.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-soquartz-cm4.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-soquartz-model-a.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-box-demo.dtb
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-usbhost.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-usbhost.dts
+new file mode 100644
+index 000000000..937c56ba0
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t-usbhost.dts
+@@ -0,0 +1,19 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * P25T, USB-C in HOST mode instead of the usual peripheral (gadget) mode.
++ *
++ * Test-only variant: swap this in place of rk3566-teclast-p25t.dtb on
++ * P25TBOOT to see whether a USB keyboard/mouse receiver is detected.
++ * While this DTB is loaded, the USB gadget console and the usb0 network
++ * link to the PC are NOT available (same physical port, opposite mode);
++ * use Wi-Fi/SSH to check dmesg and lsusb. Swap back to the normal DTB
++ * afterwards, or keep this instead of the other only if you decide the
++ * USB port should always be host mode (giving up the USB gadget console).
++ */
++
++/dts-v1/;
++#include "rk3566-teclast-p25t.dts"
++
++&usb_host0_xhci {
++	dr_mode = "host";
++};
+-- 
+2.43.0
+

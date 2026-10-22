@@ -1,0 +1,73 @@
+From 06dac048d3f6d6895b58a4632cea3fe04b706c23 Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Wed, 21 Oct 2026 09:23:37 +0200
+Subject: [PATCH 27/30] media: rockchip: rkcif: stop the capture at a frame end
+ before the source
+
+rkcif_stream_stop_streaming() disabled the source (CSI-2 receiver and
+sensor) first and only then waited for a frame end to stop the VICAP.
+A sensor that stops sending at once, in mid-frame, never delivers that
+frame end: after the 1 s timeout the VICAP is stopped inside a frame and
+keeps its write position. The next stream continues from there.
+
+Seen with the GC02M2 front camera of the Teclast P25T: only the first
+capture after a boot was clean; every later one was rolled (the picture
+starting at a random line, the same line in all frames of the capture),
+and a smaller frame after a bigger one wrote past the new buffers
+(IOMMU write page fault on an unmapped address, then the VICAP interrupt
+disabled after 100000-200000 unhandled interrupts). The sensor's line
+length and window were right every time; resetting the D-PHY or the
+VICAP's D and I parts between captures did not help. With this change,
+five captures in a row with mixed sizes and flips are clean, and the
+rear GC5035 still captures cleanly.
+
+Wait for the frame end first, with the source still running, then
+disable the source.
+
+P25T tests: p25t-sway tests/ 14-19.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0156c5MfQpFxaYWNNLMrcym9
+---
+ .../platform/rockchip/rkcif/rkcif-stream.c      | 17 +++++++++++++----
+ 1 file changed, 13 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/platform/rockchip/rkcif/rkcif-stream.c b/drivers/media/platform/rockchip/rkcif/rkcif-stream.c
+index 3130d420a..482620acb 100644
+--- a/drivers/media/platform/rockchip/rkcif/rkcif-stream.c
++++ b/drivers/media/platform/rockchip/rkcif/rkcif-stream.c
+@@ -308,10 +308,15 @@ static void rkcif_stream_stop_streaming(struct vb2_queue *queue)
+ 	u64 mask;
+ 	int ret;
+ 
+-	mask = BIT_ULL(stream->id);
+-	v4l2_subdev_disable_streams(&stream->interface->sd, RKCIF_IF_PAD_SRC,
+-				    mask);
+-
++	/*
++	 * Stop the capture at the end of a frame first, while the source
++	 * still sends: the frame end interrupt stops the stream. Stopping
++	 * the source first leaves the VICAP inside a frame (the frame end
++	 * never comes), and the next stream then continues writing at the
++	 * stale position: a rolled picture, or a write past the new buffers
++	 * when the frame size changed (IOMMU page fault). Seen with the
++	 * GC02M2 of the Teclast P25T, which stops in mid-frame.
++	 */
+ 	stream->stopping = true;
+ 	ret = wait_event_timeout(stream->wq_stopped, !stream->stopping,
+ 				 msecs_to_jiffies(1000));
+@@ -319,6 +324,10 @@ static void rkcif_stream_stop_streaming(struct vb2_queue *queue)
+ 	if (!ret && stream->stop_streaming)
+ 		stream->stop_streaming(stream);
+ 
++	mask = BIT_ULL(stream->id);
++	v4l2_subdev_disable_streams(&stream->interface->sd, RKCIF_IF_PAD_SRC,
++				    mask);
++
+ 	pm_runtime_put(rkcif->dev);
+ 
+ 	rkcif_stream_return_all_buffers(stream, VB2_BUF_STATE_ERROR);
+-- 
+2.43.0
+

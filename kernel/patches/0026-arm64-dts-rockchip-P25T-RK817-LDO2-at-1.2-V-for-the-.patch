@@ -1,0 +1,66 @@
+From 4558418f867b5265677654b91a2254182f964c11 Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Wed, 7 Oct 2026 21:43:18 +0200
+Subject: [PATCH 26/30] arm64: dts: rockchip: P25T: RK817 LDO2 at 1.2 V for the
+ rear camera
+
+The stock DT keeps RK817 LDO_REG2 ("vdda_0v9") at 1.2 V, always-on.
+Our boot left it at its reset value of 0.9 V. The GC5035 then answers
+on I2C and works from its 24 MHz input clock, but its logic freezes as
+soon as it switches to its PLL, so it never streams. At 1.2 V the
+unchanged driver delivers clean frames. Values copied from the stock DT.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0156c5MfQpFxaYWNNLMrcym9
+---
+ .../boot/dts/rockchip/rk3566-teclast-p25t.dts | 26 ++++++++++++++++++-
+ 1 file changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index b8cd10374..99c987f29 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -607,6 +607,28 @@ regulator-state-mem {
+ 				};
+ 			};
+ 
++			/*
++			 * Camera core supply (patch 0030, Jose's OK 2026-10-07).
++			 * Stock LDO_REG2: named "vdda_0v9" but set to 1.2 V,
++			 * always-on - values verbatim. Our boot left it at the
++			 * reset value 0.9 V: the GC5035 then answers on I2C and
++			 * runs from its 24 MHz input, but its logic freezes the
++			 * moment it switches to its PLL (0xfc = 0x8e), so it never
++			 * streams. At 1.2 V the unchanged driver delivers clean
++			 * frames (tests/test_22.sh .. test_45.sh, findings.org).
++			 */
++			vdda_0v9: LDO_REG2 {
++				regulator-name = "vdda_0v9";
++				regulator-min-microvolt = <1200000>;
++				regulator-max-microvolt = <1200000>;
++				regulator-always-on;
++				regulator-boot-on;
++
++				regulator-state-mem {
++					regulator-off-in-suspend;
++				};
++			};
++
+ 			/*
+ 			 * Audio codec IO/analog supply (patch 0015). Stock's own
+ 			 * LDO_REG4 is named "vccio_acodec" and is the vccio1-supply
+@@ -910,7 +932,9 @@ spk_amp_enable_h: spk-amp-enable-h {
+  * from CLK_CIF_OUT on GPIO4_C0 (pin group cif_clk, muxed in stock by
+  * rkisp-vir0), pwdn GPIO4_B2 driven high to run, power domain PD_VI, no
+  * supplies listed. Supplies here: avdd = LDO9 vcc2v8_dvp, dovdd = LDO8
+- * vcc1v8_dvp, dvdd = vcc_camera (GPIO4_A7 switch). Stock routes the
++ * vcc1v8_dvp, dvdd = vcc_camera (GPIO4_A7 switch). The sensor core also
++ * needs RK817 LDO2 at 1.2 V as in stock (patch 0030; at 0.9 V its PLL
++ * clock domain freezes) - exact wiring unknown. Stock routes the
+  * sensor through the D-PHY in split mode (csi2-dphy1 = lanes 0-1)
+  * straight into the ISP; the CSI-2 host and VICAP are disabled there.
+  * The front GC02M2 sits on lanes 2-3 (split mode, not in mainline) and
+-- 
+2.43.0
+

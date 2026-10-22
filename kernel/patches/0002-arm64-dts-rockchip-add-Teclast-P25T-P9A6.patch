@@ -1,0 +1,267 @@
+From 54a1a373de8431d4ca80fe9f675466958d06b3eb Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Fri, 25 Sep 2026 09:09:06 +0200
+Subject: [PATCH 02/30] arm64: dts: rockchip: add Teclast P25T (P9A6)
+
+Board device tree for the Teclast P25T tablet (RK3566, 4 GB): boot from
+the microSD card, USB gadget on the USB-C port, ADC keys (volume),
+VOP2 -> DSI0 -> JD9365 panel, PWM backlight. VPLL is preset to
+1608 MHz so the VOP gets the 67 MHz pixel clock exactly.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019kgfNtsGWnCDNQnFvegC9W
+---
+ arch/arm64/boot/dts/rockchip/Makefile         |   1 +
+ .../boot/dts/rockchip/rk3566-teclast-p25t.dts | 227 ++++++++++++++++++
+ 2 files changed, 228 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+
+diff --git a/arch/arm64/boot/dts/rockchip/Makefile b/arch/arm64/boot/dts/rockchip/Makefile
+index e7936a21c..33d8ab737 100644
+--- a/arch/arm64/boot/dts/rockchip/Makefile
++++ b/arch/arm64/boot/dts/rockchip/Makefile
+@@ -129,6 +129,7 @@ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-radxa-zero-3w.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-roc-pc.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-rock-3c.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-soquartz-blade.dtb
++dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-teclast-p25t.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-soquartz-cm4.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-soquartz-model-a.dtb
+ dtb-$(CONFIG_ARCH_ROCKCHIP) += rk3566-box-demo.dtb
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+new file mode 100644
+index 000000000..03f948b8d
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -0,0 +1,227 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Teclast P25T (2023, model code P9A6) - RK3566 tablet.
++ *
++ * Stage 2 tree: SD card, USB-C (peripheral), ADC keys, display (VOP2 -> DSI0 ->
++ * JD9365 panel) and PWM backlight. I2C0 enabled WITHOUT child nodes, only for
++ * read-only register dumps of the RK817 PMIC from user space.
++ * Deliberately NO PMIC (RK817), NO vdd_cpu regulator (SYR837), NO eMMC:
++ * the kernel must not change any voltage or touch Android on the eMMC.
++ * All supplies are declared as dummy fixed regulators matching the values the
++ * stock bootloader already set up.
++ */
++
++/dts-v1/;
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/input.h>
++#include <dt-bindings/pinctrl/rockchip.h>
++#include <dt-bindings/soc/rockchip,vop2.h>
++#include "rk3566.dtsi"
++
++/ {
++	model = "Teclast P25T (P9A6)";
++	compatible = "teclast,p25t", "rockchip,rk3566";
++
++	aliases {
++		mmc1 = &sdmmc0;
++	};
++
++	chosen {
++		stdout-path = "serial2:1500000n8";
++	};
++
++	/* Dummy fixed supplies: describe, never switch. */
++	vcc_sys_dummy: regulator-vcc-sys-dummy {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc_sys_dummy";
++		regulator-always-on;
++		regulator-boot-on;
++		regulator-min-microvolt = <3800000>;
++		regulator-max-microvolt = <3800000>;
++	};
++
++	vcc_3v3_dummy: regulator-vcc-3v3-dummy {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc_3v3_dummy";
++		regulator-always-on;
++		regulator-boot-on;
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		vin-supply = <&vcc_sys_dummy>;
++	};
++
++	vcc_1v8_dummy: regulator-vcc-1v8-dummy {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc_1v8_dummy";
++		regulator-always-on;
++		regulator-boot-on;
++		regulator-min-microvolt = <1800000>;
++		regulator-max-microvolt = <1800000>;
++		vin-supply = <&vcc_sys_dummy>;
++	};
++
++	/* Panel power switch: GPIO3_B1 (stock "enable-gpios", active high). */
++	vcc_lcd: regulator-vcc-lcd {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc_lcd";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		gpio = <&gpio3 RK_PB1 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++		startup-delay-us = <20000>;
++		vin-supply = <&vcc_3v3_dummy>;
++	};
++
++	backlight: backlight {
++		compatible = "pwm-backlight";
++		pwms = <&pwm14 0 25000 0>;
++		brightness-levels = <7 255>;
++		num-interpolated-steps = <248>;
++		default-brightness-level = <120>;
++		power-supply = <&vcc_sys_dummy>;
++	};
++
++	/* Volume keys on SARADC channel 0 (thresholds from the stock DT). */
++	adc-keys {
++		compatible = "adc-keys";
++		io-channels = <&saradc 0>;
++		io-channel-names = "buttons";
++		keyup-threshold-microvolt = <1800000>;
++		poll-interval = <100>;
++
++		button-vol-up {
++			label = "volume up";
++			linux,code = <KEY_VOLUMEUP>;
++			press-threshold-microvolt = <1750>;
++		};
++
++		button-vol-down {
++			label = "volume down";
++			linux,code = <KEY_VOLUMEDOWN>;
++			press-threshold-microvolt = <1297500>;
++		};
++	};
++};
++
++&saradc {
++	vref-supply = <&vcc_1v8_dummy>;
++	status = "okay";
++};
++
++/* microSD slot: stays at 3.3 V signalling (no UHS), like the stock loader left it. */
++&sdmmc0 {
++	bus-width = <4>;
++	cap-sd-highspeed;
++	disable-wp;
++	no-1-8-v;
++	pinctrl-names = "default";
++	pinctrl-0 = <&sdmmc0_bus4 &sdmmc0_clk &sdmmc0_cmd &sdmmc0_det>;
++	vmmc-supply = <&vcc_3v3_dummy>;
++	vqmmc-supply = <&vcc_3v3_dummy>;
++	status = "okay";
++};
++
++&uart2 {
++	status = "okay";
++};
++
++/* USB-C port as a USB device: gives the PC a serial console and network link. */
++&usb_host0_xhci {
++	dr_mode = "peripheral";
++	maximum-speed = "high-speed";
++	phys = <&usb2phy0_otg>;
++	phy-names = "usb2-phy";
++	status = "okay";
++};
++
++&usb2phy0 {
++	status = "okay";
++};
++
++&usb2phy0_otg {
++	status = "okay";
++};
++
++/* ---------------- Clocks ----------------
++ * dclk_vop1 cannot change its parent PLL's rate (CLK_SET_RATE_NO_REPARENT, no
++ * SET_RATE_PARENT), and our boot path skips the stock U-Boot that used to set up
++ * VPLL. Without this VPLL stays in slow mode and the panel gets a 24 MHz pixel
++ * clock instead of 67 MHz (seen in clk_summary: dclk_vop1 = 24000000).
++ * 1608 MHz / 24 = 67.000 MHz exactly.
++ */
++&cru {
++	assigned-clocks = <&pmucru CLK_RTC_32K>, <&cru PLL_GPLL>,
++			  <&pmucru PLL_PPLL>, <&cru PLL_VPLL>;
++	assigned-clock-rates = <32768>, <1200000000>,
++			       <200000000>, <1608000000>;
++};
++
++/* ---------------- Display ---------------- */
++
++&vop {
++	assigned-clocks = <&cru DCLK_VOP0>, <&cru DCLK_VOP1>;
++	assigned-clock-parents = <&pmucru PLL_HPLL>, <&cru PLL_VPLL>;
++	status = "okay";
++};
++
++&vop_mmu {
++	status = "okay";
++};
++
++&vp1 {
++	vp1_out_dsi0: endpoint@ROCKCHIP_VOP2_EP_MIPI0 {
++		reg = <ROCKCHIP_VOP2_EP_MIPI0>;
++		remote-endpoint = <&dsi0_in_vp1>;
++	};
++};
++
++&dsi_dphy0 {
++	status = "okay";
++};
++
++&dsi0 {
++	#address-cells = <1>;
++	#size-cells = <0>;
++	status = "okay";
++
++	panel@0 {
++		compatible = "teclast,p25t-panel";
++		reg = <0>;
++		backlight = <&backlight>;
++		reset-gpios = <&gpio3 RK_PC3 GPIO_ACTIVE_LOW>;
++		vdd-supply = <&vcc_lcd>;
++		vccio-supply = <&vcc_1v8_dummy>;
++
++		port {
++			mipi_in_panel: endpoint {
++				remote-endpoint = <&mipi_out_panel>;
++			};
++		};
++	};
++
++	ports {
++		dsi0_in: port@0 {
++			reg = <0>;
++			dsi0_in_vp1: endpoint {
++				remote-endpoint = <&vp1_out_dsi0>;
++			};
++		};
++
++		dsi0_out: port@1 {
++			reg = <1>;
++			mipi_out_panel: endpoint {
++				remote-endpoint = <&mipi_in_panel>;
++			};
++		};
++	};
++};
++
++&pwm14 {
++	status = "okay";
++};
++
++/* I2C0: RK817 PMIC @0x20, SYR837 @0x40. No child nodes on purpose (read-only probing). */
++&i2c0 {
++	status = "okay";
++};
+-- 
+2.43.0
+

@@ -1,0 +1,176 @@
+From b68afd3894b0008e1b998b9439f89e63ab5932a1 Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Tue, 6 Oct 2026 21:31:01 +0200
+Subject: [PATCH 25/30] arm64: dts: rockchip: P25T: rear camera pipeline and
+ LDO9
+
+Describe the rear camera: GC5035 on i2c2 (pins i2c2m1, address 0x37),
+MCLK from CLK_CIF_OUT on GPIO4_C0, powerdown GPIO4_B2, power domain
+PD_VI, as in the stock device tree. Pipeline: sensor -> CSI D-PHY (2
+lanes, full mode) -> CSI-2 host (node added, fdfb0000) -> VICAP.
+
+Add RK817 LDO_REG9 "vcc2v8_dvp" (2.8 V, always-on, values from the stock
+DT) as the sensor's analogue supply.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0156c5MfQpFxaYWNNLMrcym9
+---
+ .../boot/dts/rockchip/rk3566-teclast-p25t.dts | 123 ++++++++++++++++++
+ 1 file changed, 123 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index 8513e41c6..b8cd10374 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -16,6 +16,7 @@
+ #include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/input/input.h>
+ #include <dt-bindings/leds/common.h>
++#include <dt-bindings/media/video-interfaces.h>
+ #include <dt-bindings/pinctrl/rockchip.h>
+ #include <dt-bindings/soc/rockchip,vop2.h>
+ #include "rk3566.dtsi"
+@@ -643,6 +644,25 @@ regulator-state-mem {
+ 					regulator-off-in-suspend;
+ 				};
+ 			};
++
++			/*
++			 * Camera analogue supply (patch 0028, Jose's OK
++			 * 2026-10-06). Stock LDO_REG9 "vcc2v8_dvp", values
++			 * verbatim: 2.8 V, always-on. AVDD of the GC5035 rear
++			 * camera (and of the front GC02M2). Switching it on was
++			 * tested harmless on 2026-09-29 (tests/test_08.sh).
++			 */
++			vcc2v8_dvp: LDO_REG9 {
++				regulator-name = "vcc2v8_dvp";
++				regulator-min-microvolt = <2800000>;
++				regulator-max-microvolt = <2800000>;
++				regulator-always-on;
++				regulator-boot-on;
++
++				regulator-state-mem {
++					regulator-off-in-suspend;
++				};
++			};
+ 		};
+ 
+ 		charger {
+@@ -862,6 +882,10 @@ flash_led_en: flash-led-en {
+ 		vcc_camera_en: vcc-camera-en {
+ 			rockchip,pins = <4 RK_PA7 RK_FUNC_GPIO &pcfg_pull_none>;
+ 		};
++
++		gc5035_pwdn: gc5035-pwdn {
++			rockchip,pins = <4 RK_PB2 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
+ 	};
+ 
+ 	headphone {
+@@ -876,3 +900,102 @@ spk_amp_enable_h: spk-amp-enable-h {
+ 		};
+ 	};
+ };
++
++/*
++ * Rear camera (patch 0028): GalaxyCore GC5035, 5 MP raw Bayer, 2 MIPI
++ * lanes. Path: sensor -> CSI D-PHY (lanes 0-1, full mode) -> CSI-2 host
++ * -> VICAP -> /dev/videoN. No ISP for RK3568 in mainline: raw frames only.
++ *
++ * Stock DT (Firmware/dt): sensor gc5035@37 on i2c2 (pins i2c2m1), MCLK
++ * from CLK_CIF_OUT on GPIO4_C0 (pin group cif_clk, muxed in stock by
++ * rkisp-vir0), pwdn GPIO4_B2 driven high to run, power domain PD_VI, no
++ * supplies listed. Supplies here: avdd = LDO9 vcc2v8_dvp, dovdd = LDO8
++ * vcc1v8_dvp, dvdd = vcc_camera (GPIO4_A7 switch). Stock routes the
++ * sensor through the D-PHY in split mode (csi2-dphy1 = lanes 0-1)
++ * straight into the ISP; the CSI-2 host and VICAP are disabled there.
++ * The front GC02M2 sits on lanes 2-3 (split mode, not in mainline) and
++ * is not described.
++ */
++/ {
++	csi: csi@fdfb0000 {
++		compatible = "rockchip,rk3568-mipi-csi2";
++		reg = <0x0 0xfdfb0000 0x0 0x10000>;
++		interrupts = <GIC_SPI 8 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 9 IRQ_TYPE_LEVEL_HIGH>;
++		interrupt-names = "err1", "err2";
++		clocks = <&cru PCLK_CSI2HOST1>;
++		phys = <&csi_dphy>;
++		power-domains = <&power RK3568_PD_VI>;
++		resets = <&cru SRST_P_CSI2HOST1>;
++
++		ports {
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			csi_in: port@0 {
++				reg = <0>;
++
++				csi_input: endpoint {
++					bus-type = <MEDIA_BUS_TYPE_CSI2_DPHY>;
++					data-lanes = <1 2>;
++					remote-endpoint = <&gc5035_output>;
++				};
++			};
++
++			csi_out: port@1 {
++				reg = <1>;
++
++				csi_output: endpoint {
++					remote-endpoint = <&vicap_mipi_input>;
++				};
++			};
++		};
++	};
++};
++
++&csi_dphy {
++	status = "okay";
++};
++
++&i2c2 {
++	pinctrl-0 = <&i2c2m1_xfer>;
++	status = "okay";
++
++	gc5035: camera-sensor@37 {
++		compatible = "galaxycore,gc5035";
++		reg = <0x37>;
++		clocks = <&cru CLK_CIF_OUT>;
++		assigned-clocks = <&cru CLK_CIF_OUT>;
++		assigned-clock-rates = <24000000>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&cif_clk &gc5035_pwdn>;
++		power-domains = <&power RK3568_PD_VI>;
++		powerdown-gpios = <&gpio4 RK_PB2 GPIO_ACTIVE_LOW>;
++		avdd-supply = <&vcc2v8_dvp>;
++		dovdd-supply = <&vcc1v8_dvp>;
++		dvdd-supply = <&vcc_camera>;
++		orientation = <1>; /* back */
++
++		port {
++			gc5035_output: endpoint {
++				data-lanes = <1 2>;
++				link-frequencies = /bits/ 64 <438000000>;
++				remote-endpoint = <&csi_input>;
++			};
++		};
++	};
++};
++
++&vicap {
++	status = "okay";
++};
++
++&vicap_mipi {
++	vicap_mipi_input: endpoint {
++		remote-endpoint = <&csi_output>;
++	};
++};
++
++&vicap_mmu {
++	status = "okay";
++};
+-- 
+2.43.0
+

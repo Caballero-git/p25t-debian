@@ -1,0 +1,1047 @@
+From 94569c3a3f8934306c23b2e3bed16a9e2ae3cc45 Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Wed, 21 Oct 2026 09:23:38 +0200
+Subject: [PATCH 29/30] media: i2c: add GalaxyCore GC02M2 sensor driver
+
+Driver for the GalaxyCore GC02M2, the 2 MP front camera of the Teclast
+P25T: 1600x1200 raw Bayer, 1 MIPI CSI-2 lane at 672 Mbps (link frequency
+336 MHz), 24 MHz MCLK, I2C address 0x10, chip ID 0x02f0.
+
+Register table, gain table and power-on order come from Rockchip's BSP
+driver gc02m2.c (2020, V0.0X01.0X02). Written for mainline: CCI register
+access (8-bit registers, page select 0xfe), subdev state and streams,
+runtime PM with autosuspend, MCLK, three supplies and optional reset and
+powerdown GPIOs from the device tree. 16-bit values are written as two
+8-bit registers, as the BSP driver does.
+
+Modes: 1600x1200 and a centred 1296x972 crop (same size as the rear
+camera's binned mode), both at the BSP frame timing (HTS 2192, VTS
+1268). Controls: exposure, analogue gain (total gain in 1/64, analogue
+step + digital pre-gain as in the BSP), vblank, hblank, pixel rate, link
+frequency, horizontal/vertical flip (page 0 register 0x17; not while
+streaming), orientation/rotation from the DT.
+
+The Bayer order is RGGB with any flip: the sensor moves its readout by a
+row/column when flipping, so the green pixels stay on the anti-diagonal
+of each 2x2 cell (checked with all four flip combinations).
+
+P25T tests: p25t-sway tests/ 07-10 (by hand, before the driver), 11-21.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0156c5MfQpFxaYWNNLMrcym9
+---
+ .../bindings/media/i2c/galaxycore,gc02m2.yaml | 110 +++
+ drivers/media/i2c/Kconfig                     |  10 +
+ drivers/media/i2c/Makefile                    |   1 +
+ drivers/media/i2c/gc02m2.c                    | 848 ++++++++++++++++++
+ 4 files changed, 969 insertions(+)
+ create mode 100644 Documentation/devicetree/bindings/media/i2c/galaxycore,gc02m2.yaml
+ create mode 100644 drivers/media/i2c/gc02m2.c
+
+diff --git a/Documentation/devicetree/bindings/media/i2c/galaxycore,gc02m2.yaml b/Documentation/devicetree/bindings/media/i2c/galaxycore,gc02m2.yaml
+new file mode 100644
+index 000000000..e94b51ab1
+--- /dev/null
++++ b/Documentation/devicetree/bindings/media/i2c/galaxycore,gc02m2.yaml
+@@ -0,0 +1,110 @@
++# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/media/i2c/galaxycore,gc02m2.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: GalaxyCore GC02M2 2 MP MIPI CSI-2 sensor
++
++maintainers:
++  - Jose M. Caballero Guerrero <80172778+Caballero-git@users.noreply.github.com>
++
++description:
++  The GC02M2 is a 1600x1200 raw Bayer image sensor with a 1-lane MIPI
++  CSI-2 data interface and a CCI (I2C compatible) control bus.
++
++allOf:
++  - $ref: /schemas/media/video-interface-devices.yaml#
++
++properties:
++  compatible:
++    const: galaxycore,gc02m2
++
++  reg:
++    maxItems: 1
++
++  clocks:
++    maxItems: 1
++
++  power-domains:
++    maxItems: 1
++
++  dovdd-supply: true
++
++  avdd-supply: true
++
++  dvdd-supply: true
++
++  reset-gpios:
++    description: GPIO connected to the RESET pin (active high).
++    maxItems: 1
++
++  powerdown-gpios:
++    description: GPIO connected to the PWDN pin (active low).
++    maxItems: 1
++
++  port:
++    $ref: /schemas/graph.yaml#/$defs/port-base
++    additionalProperties: false
++    description:
++      Output port node, single endpoint describing the CSI-2 transmitter.
++
++    properties:
++      endpoint:
++        $ref: /schemas/media/video-interfaces.yaml#
++        unevaluatedProperties: false
++
++        properties:
++          data-lanes:
++            items:
++              - const: 1
++
++          link-frequencies: true
++
++        required:
++          - data-lanes
++          - link-frequencies
++
++    required:
++      - endpoint
++
++required:
++  - compatible
++  - reg
++  - clocks
++  - dovdd-supply
++  - avdd-supply
++  - dvdd-supply
++  - port
++
++unevaluatedProperties: false
++
++examples:
++  - |
++    #include <dt-bindings/gpio/gpio.h>
++
++    i2c {
++        #address-cells = <1>;
++        #size-cells = <0>;
++
++        camera-sensor@10 {
++            compatible = "galaxycore,gc02m2";
++            reg = <0x10>;
++            clocks = <&cif_clk_out>;
++            reset-gpios = <&gpio4 8 GPIO_ACTIVE_HIGH>;
++            powerdown-gpios = <&gpio4 11 GPIO_ACTIVE_LOW>;
++            avdd-supply = <&vcc2v8_dvp>;
++            dovdd-supply = <&vcc1v8_dvp>;
++            dvdd-supply = <&vcc_camera>;
++            orientation = <0>;
++
++            port {
++                endpoint {
++                    data-lanes = <1>;
++                    link-frequencies = /bits/ 64 <336000000>;
++                    remote-endpoint = <&csi_input>;
++                };
++            };
++        };
++    };
++...
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+index 8febedc07..2cbd506bc 100644
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -80,6 +80,16 @@ config VIDEO_GC0310
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called gc0310.
+ 
++config VIDEO_GC02M2
++	tristate "GalaxyCore gc02m2 sensor support"
++	select V4L2_CCI_I2C
++	help
++	  This is a Video4Linux2 sensor driver for the GalaxyCore gc02m2
++	  2 MP raw Bayer camera sensor (1-lane MIPI CSI-2).
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called gc02m2.
++
+ config VIDEO_GC05A2
+ 	tristate "GalaxyCore gc05a2 sensor support"
+ 	select V4L2_CCI_I2C
+diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
+index 8899f380f..28d1bf0c4 100644
+--- a/drivers/media/i2c/Makefile
++++ b/drivers/media/i2c/Makefile
+@@ -39,6 +39,7 @@ obj-$(CONFIG_VIDEO_DW9807_VCM) += dw9807-vcm.o
+ obj-$(CONFIG_VIDEO_ET8EK8) += et8ek8/
+ obj-$(CONFIG_VIDEO_GC0308) += gc0308.o
+ obj-$(CONFIG_VIDEO_GC0310) += gc0310.o
++obj-$(CONFIG_VIDEO_GC02M2) += gc02m2.o
+ obj-$(CONFIG_VIDEO_GC05A2) += gc05a2.o
+ obj-$(CONFIG_VIDEO_GC08A3) += gc08a3.o
+ obj-$(CONFIG_VIDEO_GC5035) += gc5035.o
+diff --git a/drivers/media/i2c/gc02m2.c b/drivers/media/i2c/gc02m2.c
+new file mode 100644
+index 000000000..52ddc0d37
+--- /dev/null
++++ b/drivers/media/i2c/gc02m2.c
+@@ -0,0 +1,848 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * GalaxyCore GC02M2 2 MP raw Bayer sensor driver (1-lane MIPI CSI-2).
++ *
++ * Based on Rockchip's BSP driver gc02m2.c (Copyright (C) 2020 Rockchip
++ * Electronics Co., Ltd.): register table, gain table, power-on sequence.
++ * Rewritten for mainline: CCI register access, subdev state, streams,
++ * runtime PM, device tree power control.
++ */
++
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/i2c.h>
++#include <linux/module.h>
++#include <linux/pm_runtime.h>
++#include <linux/regmap.h>
++#include <linux/regulator/consumer.h>
++#include <linux/units.h>
++
++#include <media/v4l2-cci.h>
++#include <media/v4l2-ctrls.h>
++#include <media/v4l2-device.h>
++#include <media/v4l2-fwnode.h>
++#include <media/v4l2-subdev.h>
++
++#define GC02M2_MCLK_FREQ		(24 * HZ_PER_MHZ)
++#define GC02M2_LINK_FREQ		336000000ULL
++/* 1 lane, 10 bit, double data rate */
++#define GC02M2_PIXEL_RATE		(GC02M2_LINK_FREQ * 2 / 10)
++
++#define GC02M2_CHIP_ID			0x02f0
++#define GC02M2_REG_CHIP_ID		0xf0	/* high byte; low byte at +1 */
++
++#define GC02M2_REG_PAGE			CCI_REG8(0xfe)
++
++/* page 0 */
++#define GC02M2_REG_EXPOSURE		0x03	/* high byte; low byte at +1 */
++#define GC02M2_EXPOSURE_MIN		4
++#define GC02M2_EXPOSURE_MARGIN		16
++#define GC02M2_REG_MIRROR_FLIP		CCI_REG8(0x17)
++#define GC02M2_MIRROR_FLIP_BASE		0x80
++#define GC02M2_MIRROR			BIT(0)
++#define GC02M2_FLIP			BIT(1)
++#define GC02M2_REG_STREAM		CCI_REG8(0x3e)
++#define GC02M2_STREAM_ON		0x90
++#define GC02M2_STREAM_OFF		0x00
++#define GC02M2_REG_VTS		0x41	/* high byte; low byte at +1 */
++#define GC02M2_VTS_MAX			0x3fff
++#define GC02M2_REG_PREGAIN		0xb1	/* high byte; low byte at +1 */
++#define GC02M2_REG_AGAIN		CCI_REG8(0xb6)
++
++/* page 1: output window */
++#define GC02M2_REG_WIN_Y		0x91	/* high byte; low byte at +1 */
++#define GC02M2_REG_WIN_X		0x93	/* high byte; low byte at +1 */
++#define GC02M2_REG_WIN_H		0x95	/* high byte; low byte at +1 */
++#define GC02M2_REG_WIN_W		0x97	/* high byte; low byte at +1 */
++
++/* the 1600x1200 output window starts at (6, 6) in the pixel array */
++#define GC02M2_ARRAY_LEFT		6
++#define GC02M2_ARRAY_TOP		6
++#define GC02M2_ACTIVE_WIDTH		1600
++#define GC02M2_ACTIVE_HEIGHT		1200
++
++#define GC02M2_HTS			(0x448 * 2)
++#define GC02M2_VTS_DEF			0x4f4
++#define GC02M2_EXPOSURE_DEF		0x475
++
++/* total gain in 1/64 steps */
++#define GC02M2_GAIN_MIN			0x40
++#define GC02M2_GAIN_MAX			0x286
++#define GC02M2_GAIN_DEF			0x80
++#define GC02M2_DGAIN_BASE		1024
++
++static const char * const gc02m2_supply_names[] = {
++	"dovdd",	/* digital I/O, 1.8 V */
++	"avdd",		/* analogue, 2.8 V */
++	"dvdd",		/* digital core */
++};
++
++#define GC02M2_NUM_SUPPLIES ARRAY_SIZE(gc02m2_supply_names)
++
++struct gc02m2_mode {
++	u32 width;
++	u32 height;
++	/* output window inside the 1600x1200 active area */
++	u32 left;
++	u32 top;
++	u32 vts_def;
++};
++
++static const struct gc02m2_mode gc02m2_modes[] = {
++	{
++		.width = 1600, .height = 1200, .left = 0, .top = 0,
++		.vts_def = GC02M2_VTS_DEF,
++	},
++	{
++		/* centred crop, same frame timing */
++		.width = 1296, .height = 972, .left = 152, .top = 114,
++		.vts_def = GC02M2_VTS_DEF,
++	},
++};
++
++static const s64 gc02m2_link_freqs[] = {
++	GC02M2_LINK_FREQ,
++};
++
++/*
++ * The sensor shifts its readout by a row/column when flipping, so the
++ * Bayer order stays RGGB with either flip (checked on the Teclast P25T).
++ */
++#define GC02M2_MBUS_CODE		MEDIA_BUS_FMT_SRGGB10_1X10
++
++/* analogue gain steps: total gain (1/64) where step n starts */
++static const u16 gc02m2_again_steps[] = {
++	64, 96, 127, 157, 198, 227, 259, 287, 318, 356, 392, 420, 451, 480,
++	513, 646,
++};
++
++/*
++ * Rockchip's register table for 24 MHz MCLK, 1 lane at 672 Mbps,
++ * 1600x1200 RAW10. 0xfe selects the register page.
++ */
++static const struct reg_sequence gc02m2_init_regs[] = {
++	/* system */
++	{ 0xfc, 0x01 }, { 0xf4, 0x41 }, { 0xf5, 0xc0 }, { 0xf6, 0x44 },
++	{ 0xf8, 0x38 }, { 0xf9, 0x82 }, { 0xfa, 0x00 }, { 0xfd, 0x80 },
++	{ 0xfc, 0x81 }, { 0xfe, 0x03 }, { 0x01, 0x0b }, { 0xf7, 0x01 },
++	{ 0xfc, 0x80 }, { 0xfc, 0x80 }, { 0xfc, 0x80 }, { 0xfc, 0x8e },
++	/* CISCTL */
++	{ 0xfe, 0x00 }, { 0x87, 0x09 }, { 0xee, 0x72 }, { 0xfe, 0x01 },
++	{ 0x8c, 0x90 }, { 0xfe, 0x00 }, { 0x90, 0x00 }, { 0x03, 0x04 },
++	{ 0x04, 0x7d }, { 0x41, 0x04 }, { 0x42, 0xf4 }, { 0x05, 0x04 },
++	{ 0x06, 0x48 }, { 0x07, 0x00 }, { 0x08, 0x18 }, { 0x9d, 0x18 },
++	{ 0x09, 0x00 }, { 0x0a, 0x02 }, { 0x0d, 0x04 }, { 0x0e, 0xbc },
++	{ 0x17, 0x80 }, { 0x19, 0x04 }, { 0x24, 0x00 }, { 0x56, 0x20 },
++	{ 0x5b, 0x00 }, { 0x5e, 0x01 },
++	/* analogue */
++	{ 0x21, 0x3c }, { 0x44, 0x20 }, { 0xcc, 0x01 },
++	/* timing */
++	{ 0x1a, 0x04 }, { 0x1f, 0x11 }, { 0x27, 0x30 }, { 0x2b, 0x00 },
++	{ 0x33, 0x00 }, { 0x53, 0x90 }, { 0xe6, 0x50 },
++	/* RSV */
++	{ 0x39, 0x07 }, { 0x43, 0x04 }, { 0x46, 0x2a }, { 0x7c, 0xa0 },
++	{ 0xd0, 0xbe }, { 0xd1, 0x40 }, { 0xd2, 0x40 }, { 0xd3, 0xb3 },
++	{ 0xde, 0x1c },
++	/* analogue */
++	{ 0xcd, 0x06 }, { 0xce, 0x6f },
++	/* system reset */
++	{ 0xfc, 0x88 }, { 0xfe, 0x10 }, { 0xfe, 0x00 }, { 0xfc, 0x8e },
++	{ 0xfe, 0x00 }, { 0xfe, 0x00 }, { 0xfe, 0x00 }, { 0xfe, 0x00 },
++	{ 0xfc, 0x88 }, { 0xfe, 0x10 }, { 0xfe, 0x00 }, { 0xfc, 0x8e },
++	/* gamma */
++	{ 0xfe, 0x04 }, { 0xe0, 0x01 }, { 0xfe, 0x00 },
++	/* ISP */
++	{ 0xfe, 0x01 }, { 0x53, 0x54 }, { 0x87, 0x53 }, { 0x89, 0x03 },
++	/* gain */
++	{ 0xfe, 0x00 }, { 0xb0, 0x74 }, { 0xb1, 0x04 }, { 0xb2, 0x00 },
++	{ 0xb6, 0x00 }, { 0xfe, 0x04 }, { 0xd8, 0x00 },
++	{ 0xc0, 0x40 }, { 0xc0, 0x00 }, { 0xc0, 0x00 }, { 0xc0, 0x00 },
++	{ 0xc0, 0x60 }, { 0xc0, 0x00 }, { 0xc0, 0xc0 }, { 0xc0, 0x2a },
++	{ 0xc0, 0x80 }, { 0xc0, 0x00 }, { 0xc0, 0x00 }, { 0xc0, 0x40 },
++	{ 0xc0, 0xa0 }, { 0xc0, 0x00 }, { 0xc0, 0x90 }, { 0xc0, 0x19 },
++	{ 0xc0, 0xc0 }, { 0xc0, 0x00 }, { 0xc0, 0xd0 }, { 0xc0, 0x2f },
++	{ 0xc0, 0xe0 }, { 0xc0, 0x00 }, { 0xc0, 0x90 }, { 0xc0, 0x39 },
++	{ 0xc0, 0x00 }, { 0xc0, 0x01 }, { 0xc0, 0x20 }, { 0xc0, 0x04 },
++	{ 0xc0, 0x20 }, { 0xc0, 0x01 }, { 0xc0, 0xe0 }, { 0xc0, 0x0f },
++	{ 0xc0, 0x40 }, { 0xc0, 0x01 }, { 0xc0, 0xe0 }, { 0xc0, 0x1a },
++	{ 0xc0, 0x60 }, { 0xc0, 0x01 }, { 0xc0, 0x20 }, { 0xc0, 0x25 },
++	{ 0xc0, 0x80 }, { 0xc0, 0x01 }, { 0xc0, 0xa0 }, { 0xc0, 0x2c },
++	{ 0xc0, 0xa0 }, { 0xc0, 0x01 }, { 0xc0, 0xe0 }, { 0xc0, 0x32 },
++	{ 0xc0, 0xc0 }, { 0xc0, 0x01 }, { 0xc0, 0x20 }, { 0xc0, 0x38 },
++	{ 0xc0, 0xe0 }, { 0xc0, 0x01 }, { 0xc0, 0x60 }, { 0xc0, 0x3c },
++	{ 0xc0, 0x00 }, { 0xc0, 0x02 }, { 0xc0, 0xa0 }, { 0xc0, 0x40 },
++	{ 0xc0, 0x80 }, { 0xc0, 0x02 }, { 0xc0, 0x18 }, { 0xc0, 0x5c },
++	{ 0xfe, 0x00 }, { 0x9f, 0x10 },
++	/* black level */
++	{ 0xfe, 0x00 }, { 0x26, 0x20 }, { 0xfe, 0x01 }, { 0x40, 0x22 },
++	{ 0x46, 0x7f }, { 0x49, 0x0f }, { 0x4a, 0xf0 }, { 0xfe, 0x04 },
++	{ 0x14, 0x80 }, { 0x15, 0x80 }, { 0x16, 0x80 }, { 0x17, 0x80 },
++	/* anti-blooming */
++	{ 0xfe, 0x01 }, { 0x41, 0x20 }, { 0x4c, 0x00 }, { 0x4d, 0x0c },
++	{ 0x44, 0x08 }, { 0x48, 0x03 },
++	/* window 1600x1200 (the driver writes the mode's window after this) */
++	{ 0xfe, 0x01 }, { 0x90, 0x01 }, { 0x91, 0x00 }, { 0x92, 0x06 },
++	{ 0x93, 0x00 }, { 0x94, 0x06 }, { 0x95, 0x04 }, { 0x96, 0xb0 },
++	{ 0x97, 0x06 }, { 0x98, 0x40 },
++	/* MIPI */
++	{ 0xfe, 0x03 }, { 0x01, 0x23 }, { 0x03, 0xce }, { 0x04, 0x48 },
++	{ 0x15, 0x01 }, { 0x21, 0x10 }, { 0x22, 0x05 }, { 0x23, 0x20 },
++	{ 0x25, 0x20 }, { 0x26, 0x08 }, { 0x29, 0x06 }, { 0x2a, 0x0a },
++	{ 0x2b, 0x08 },
++	/* out */
++	{ 0xfe, 0x01 }, { 0x8c, 0x10 },
++	{ 0xfe, 0x00 },
++};
++
++struct gc02m2 {
++	struct device *dev;
++	struct v4l2_subdev sd;
++	struct media_pad pad;
++	struct regmap *regmap;
++	struct clk *mclk;
++	struct gpio_desc *reset_gpio;
++	struct gpio_desc *powerdown_gpio;
++	struct regulator_bulk_data supplies[GC02M2_NUM_SUPPLIES];
++
++	struct v4l2_ctrl_handler ctrls;
++	struct v4l2_ctrl *exposure;
++	struct v4l2_ctrl *vblank;
++	struct v4l2_ctrl *hblank;
++	struct v4l2_ctrl *hflip;
++	struct v4l2_ctrl *vflip;
++};
++
++static inline struct gc02m2 *to_gc02m2(struct v4l2_subdev *sd)
++{
++	return container_of(sd, struct gc02m2, sd);
++}
++
++/*
++ * 16-bit values are written as two 8-bit registers (high byte first), as
++ * Rockchip's driver does, without relying on address auto-increment.
++ */
++static void gc02m2_write16(struct gc02m2 *gc02m2, u8 reg, u16 val, int *err)
++{
++	cci_write(gc02m2->regmap, CCI_REG8(reg), val >> 8, err);
++	cci_write(gc02m2->regmap, CCI_REG8(reg + 1), val & 0xff, err);
++}
++
++static u32 gc02m2_mbus_code(struct gc02m2 *gc02m2)
++{
++	return GC02M2_MBUS_CODE;
++}
++
++static const struct gc02m2_mode *gc02m2_find_mode(u32 width, u32 height)
++{
++	return v4l2_find_nearest_size(gc02m2_modes, ARRAY_SIZE(gc02m2_modes),
++				      width, height, width, height);
++}
++
++static int gc02m2_set_gain(struct gc02m2 *gc02m2, u32 gain)
++{
++	unsigned int i;
++	u32 dgain;
++	int ret = 0;
++
++	for (i = ARRAY_SIZE(gc02m2_again_steps) - 1; i > 0; i--)
++		if (gain >= gc02m2_again_steps[i])
++			break;
++
++	dgain = gain * GC02M2_DGAIN_BASE / gc02m2_again_steps[i];
++
++	cci_write(gc02m2->regmap, GC02M2_REG_PAGE, 0x00, &ret);
++	cci_write(gc02m2->regmap, GC02M2_REG_AGAIN, i, &ret);
++	gc02m2_write16(gc02m2, GC02M2_REG_PREGAIN, dgain, &ret);
++
++	return ret;
++}
++
++static int gc02m2_set_flip(struct gc02m2 *gc02m2)
++{
++	u64 val = GC02M2_MIRROR_FLIP_BASE;
++	int ret = 0;
++
++	if (gc02m2->hflip->val)
++		val |= GC02M2_MIRROR;
++	if (gc02m2->vflip->val)
++		val |= GC02M2_FLIP;
++
++	cci_write(gc02m2->regmap, GC02M2_REG_PAGE, 0x00, &ret);
++	cci_write(gc02m2->regmap, GC02M2_REG_MIRROR_FLIP, val, &ret);
++
++	return ret;
++}
++
++static int gc02m2_s_ctrl(struct v4l2_ctrl *ctrl)
++{
++	struct gc02m2 *gc02m2 = container_of(ctrl->handler, struct gc02m2,
++					     ctrls);
++	struct v4l2_subdev_state *state;
++	const struct v4l2_mbus_framefmt *fmt;
++	int ret = 0;
++
++	state = v4l2_subdev_get_locked_active_state(&gc02m2->sd);
++	fmt = v4l2_subdev_state_get_format(state, 0);
++
++	if (ctrl->id == V4L2_CID_VBLANK) {
++		/* the longest exposure follows the frame length */
++		s64 max = fmt->height + ctrl->val - GC02M2_EXPOSURE_MARGIN;
++
++		ret = __v4l2_ctrl_modify_range(gc02m2->exposure,
++					       gc02m2->exposure->minimum, max,
++					       gc02m2->exposure->step,
++					       min(gc02m2->exposure->default_value,
++						   max));
++		if (ret)
++			return ret;
++	}
++
++	/* write to the sensor only while it is powered */
++	if (!pm_runtime_get_if_in_use(gc02m2->dev))
++		return 0;
++
++	switch (ctrl->id) {
++	case V4L2_CID_EXPOSURE:
++		cci_write(gc02m2->regmap, GC02M2_REG_PAGE, 0x00, &ret);
++		gc02m2_write16(gc02m2, GC02M2_REG_EXPOSURE, ctrl->val & 0x3fff,
++			       &ret);
++		break;
++	case V4L2_CID_ANALOGUE_GAIN:
++		ret = gc02m2_set_gain(gc02m2, ctrl->val);
++		break;
++	case V4L2_CID_VBLANK:
++		cci_write(gc02m2->regmap, GC02M2_REG_PAGE, 0x00, &ret);
++		gc02m2_write16(gc02m2, GC02M2_REG_VTS,
++			       (fmt->height + ctrl->val) & GC02M2_VTS_MAX, &ret);
++		break;
++	case V4L2_CID_HFLIP:
++	case V4L2_CID_VFLIP:
++		ret = gc02m2_set_flip(gc02m2);
++		break;
++	default:
++		ret = -EINVAL;
++		break;
++	}
++
++	pm_runtime_put(gc02m2->dev);
++
++	return ret;
++}
++
++static const struct v4l2_ctrl_ops gc02m2_ctrl_ops = {
++	.s_ctrl = gc02m2_s_ctrl,
++};
++
++static void gc02m2_update_blanking(struct gc02m2 *gc02m2,
++				   const struct gc02m2_mode *mode)
++{
++	s64 hblank = GC02M2_HTS - mode->width;
++	s64 vblank = mode->vts_def - mode->height;
++
++	__v4l2_ctrl_modify_range(gc02m2->hblank, hblank, hblank, 1, hblank);
++	__v4l2_ctrl_modify_range(gc02m2->vblank, vblank,
++				 GC02M2_VTS_MAX - mode->height, 1, vblank);
++	__v4l2_ctrl_s_ctrl(gc02m2->vblank, vblank);
++}
++
++static void gc02m2_fill_format(struct gc02m2 *gc02m2,
++			       struct v4l2_mbus_framefmt *fmt,
++			       const struct gc02m2_mode *mode)
++{
++	fmt->width = mode->width;
++	fmt->height = mode->height;
++	fmt->code = gc02m2_mbus_code(gc02m2);
++	fmt->field = V4L2_FIELD_NONE;
++	fmt->colorspace = V4L2_COLORSPACE_RAW;
++	fmt->ycbcr_enc = V4L2_YCBCR_ENC_601;
++	fmt->quantization = V4L2_QUANTIZATION_FULL_RANGE;
++	fmt->xfer_func = V4L2_XFER_FUNC_NONE;
++}
++
++static int gc02m2_set_fmt(struct v4l2_subdev *sd,
++			  struct v4l2_subdev_state *state,
++			  struct v4l2_subdev_format *format)
++{
++	struct gc02m2 *gc02m2 = to_gc02m2(sd);
++	const struct gc02m2_mode *mode;
++	struct v4l2_rect *crop;
++
++	if (format->which == V4L2_SUBDEV_FORMAT_ACTIVE &&
++	    v4l2_subdev_is_streaming(sd))
++		return -EBUSY;
++
++	mode = gc02m2_find_mode(format->format.width, format->format.height);
++	gc02m2_fill_format(gc02m2, &format->format, mode);
++	*v4l2_subdev_state_get_format(state, format->pad) = format->format;
++
++	crop = v4l2_subdev_state_get_crop(state, format->pad);
++	crop->left = GC02M2_ARRAY_LEFT + mode->left;
++	crop->top = GC02M2_ARRAY_TOP + mode->top;
++	crop->width = mode->width;
++	crop->height = mode->height;
++
++	if (format->which == V4L2_SUBDEV_FORMAT_ACTIVE)
++		gc02m2_update_blanking(gc02m2, mode);
++
++	return 0;
++}
++
++static int gc02m2_enum_mbus_code(struct v4l2_subdev *sd,
++				 struct v4l2_subdev_state *state,
++				 struct v4l2_subdev_mbus_code_enum *code)
++{
++	if (code->index)
++		return -EINVAL;
++
++	code->code = gc02m2_mbus_code(to_gc02m2(sd));
++
++	return 0;
++}
++
++static int gc02m2_enum_frame_size(struct v4l2_subdev *sd,
++				  struct v4l2_subdev_state *state,
++				  struct v4l2_subdev_frame_size_enum *fse)
++{
++	if (fse->index >= ARRAY_SIZE(gc02m2_modes) ||
++	    fse->code != gc02m2_mbus_code(to_gc02m2(sd)))
++		return -EINVAL;
++
++	fse->min_width = gc02m2_modes[fse->index].width;
++	fse->max_width = fse->min_width;
++	fse->min_height = gc02m2_modes[fse->index].height;
++	fse->max_height = fse->min_height;
++
++	return 0;
++}
++
++static int gc02m2_get_selection(struct v4l2_subdev *sd,
++				struct v4l2_subdev_state *state,
++				struct v4l2_subdev_selection *sel)
++{
++	switch (sel->target) {
++	case V4L2_SEL_TGT_CROP:
++		sel->r = *v4l2_subdev_state_get_crop(state, 0);
++		return 0;
++	case V4L2_SEL_TGT_NATIVE_SIZE:
++	case V4L2_SEL_TGT_CROP_BOUNDS:
++	case V4L2_SEL_TGT_CROP_DEFAULT:
++		sel->r.left = GC02M2_ARRAY_LEFT;
++		sel->r.top = GC02M2_ARRAY_TOP;
++		sel->r.width = GC02M2_ACTIVE_WIDTH;
++		sel->r.height = GC02M2_ACTIVE_HEIGHT;
++		return 0;
++	default:
++		return -EINVAL;
++	}
++}
++
++static int gc02m2_enable_streams(struct v4l2_subdev *sd,
++				 struct v4l2_subdev_state *state, u32 pad,
++				 u64 streams_mask)
++{
++	struct gc02m2 *gc02m2 = to_gc02m2(sd);
++	const struct v4l2_rect *crop = v4l2_subdev_state_get_crop(state, 0);
++	int ret;
++
++	ret = pm_runtime_resume_and_get(gc02m2->dev);
++	if (ret)
++		return ret;
++
++	ret = regmap_multi_reg_write(gc02m2->regmap, gc02m2_init_regs,
++				     ARRAY_SIZE(gc02m2_init_regs));
++	if (ret)
++		goto err_put;
++
++	cci_write(gc02m2->regmap, GC02M2_REG_PAGE, 0x01, &ret);
++	gc02m2_write16(gc02m2, GC02M2_REG_WIN_Y, crop->top, &ret);
++	gc02m2_write16(gc02m2, GC02M2_REG_WIN_X, crop->left, &ret);
++	gc02m2_write16(gc02m2, GC02M2_REG_WIN_H, crop->height, &ret);
++	gc02m2_write16(gc02m2, GC02M2_REG_WIN_W, crop->width, &ret);
++	if (ret)
++		goto err_put;
++
++	ret = __v4l2_ctrl_handler_setup(&gc02m2->ctrls);
++	if (ret)
++		goto err_put;
++
++	cci_write(gc02m2->regmap, GC02M2_REG_PAGE, 0x00, &ret);
++	cci_write(gc02m2->regmap, GC02M2_REG_STREAM, GC02M2_STREAM_ON, &ret);
++	if (ret)
++		goto err_put;
++
++	/* no readout direction change in mid-frame */
++	__v4l2_ctrl_grab(gc02m2->hflip, true);
++	__v4l2_ctrl_grab(gc02m2->vflip, true);
++
++	return 0;
++
++err_put:
++	pm_runtime_put(gc02m2->dev);
++	return ret;
++}
++
++static int gc02m2_disable_streams(struct v4l2_subdev *sd,
++				  struct v4l2_subdev_state *state, u32 pad,
++				  u64 streams_mask)
++{
++	struct gc02m2 *gc02m2 = to_gc02m2(sd);
++	int ret = 0;
++
++	cci_write(gc02m2->regmap, GC02M2_REG_PAGE, 0x00, &ret);
++	cci_write(gc02m2->regmap, GC02M2_REG_STREAM, GC02M2_STREAM_OFF, &ret);
++
++	__v4l2_ctrl_grab(gc02m2->hflip, false);
++	__v4l2_ctrl_grab(gc02m2->vflip, false);
++
++	pm_runtime_put_autosuspend(gc02m2->dev);
++
++	return ret;
++}
++
++static int gc02m2_init_state(struct v4l2_subdev *sd,
++			     struct v4l2_subdev_state *state)
++{
++	struct v4l2_subdev_format fmt = {
++		.which = V4L2_SUBDEV_FORMAT_TRY,
++		.pad = 0,
++		.format = {
++			.width = gc02m2_modes[0].width,
++			.height = gc02m2_modes[0].height,
++		},
++	};
++
++	return gc02m2_set_fmt(sd, state, &fmt);
++}
++
++static const struct v4l2_subdev_video_ops gc02m2_video_ops = {
++	.s_stream = v4l2_subdev_s_stream_helper,
++};
++
++static const struct v4l2_subdev_pad_ops gc02m2_pad_ops = {
++	.enum_mbus_code = gc02m2_enum_mbus_code,
++	.enum_frame_size = gc02m2_enum_frame_size,
++	.get_fmt = v4l2_subdev_get_fmt,
++	.set_fmt = gc02m2_set_fmt,
++	.get_selection = gc02m2_get_selection,
++	.enable_streams = gc02m2_enable_streams,
++	.disable_streams = gc02m2_disable_streams,
++};
++
++static const struct v4l2_subdev_ops gc02m2_subdev_ops = {
++	.video = &gc02m2_video_ops,
++	.pad = &gc02m2_pad_ops,
++};
++
++static const struct v4l2_subdev_internal_ops gc02m2_internal_ops = {
++	.init_state = gc02m2_init_state,
++};
++
++static int gc02m2_power_on(struct device *dev)
++{
++	struct v4l2_subdev *sd = dev_get_drvdata(dev);
++	struct gc02m2 *gc02m2 = to_gc02m2(sd);
++	int ret;
++
++	ret = clk_prepare_enable(gc02m2->mclk);
++	if (ret) {
++		dev_err(dev, "failed to enable MCLK: %d\n", ret);
++		return ret;
++	}
++
++	ret = regulator_bulk_enable(GC02M2_NUM_SUPPLIES, gc02m2->supplies);
++	if (ret) {
++		dev_err(dev, "failed to enable supplies: %d\n", ret);
++		clk_disable_unprepare(gc02m2->mclk);
++		return ret;
++	}
++
++	/* Rockchip's order: reset on, powerdown off, reset off */
++	gpiod_set_value_cansleep(gc02m2->reset_gpio, 1);
++	gpiod_set_value_cansleep(gc02m2->powerdown_gpio, 0);
++	usleep_range(1000, 2000);
++	gpiod_set_value_cansleep(gc02m2->reset_gpio, 0);
++	/* 8192 MCLK cycles before the first I2C access, with margin */
++	usleep_range(1000, 2000);
++
++	return 0;
++}
++
++static int gc02m2_power_off(struct device *dev)
++{
++	struct v4l2_subdev *sd = dev_get_drvdata(dev);
++	struct gc02m2 *gc02m2 = to_gc02m2(sd);
++
++	gpiod_set_value_cansleep(gc02m2->powerdown_gpio, 1);
++	gpiod_set_value_cansleep(gc02m2->reset_gpio, 1);
++	regulator_bulk_disable(GC02M2_NUM_SUPPLIES, gc02m2->supplies);
++	clk_disable_unprepare(gc02m2->mclk);
++
++	return 0;
++}
++
++static int gc02m2_identify(struct gc02m2 *gc02m2)
++{
++	u64 hi, lo, id;
++	int ret = 0;
++
++	cci_read(gc02m2->regmap, CCI_REG8(GC02M2_REG_CHIP_ID), &hi, &ret);
++	cci_read(gc02m2->regmap, CCI_REG8(GC02M2_REG_CHIP_ID + 1), &lo, &ret);
++	id = hi << 8 | lo;
++	if (ret)
++		return dev_err_probe(gc02m2->dev, ret, "failed to read chip ID\n");
++
++	if (id != GC02M2_CHIP_ID)
++		return dev_err_probe(gc02m2->dev, -ENODEV,
++				     "chip ID 0x%04llx, expected 0x%04x\n",
++				     id, GC02M2_CHIP_ID);
++
++	return 0;
++}
++
++static int gc02m2_check_hwcfg(struct gc02m2 *gc02m2)
++{
++	struct v4l2_fwnode_endpoint bus_cfg = {
++		.bus_type = V4L2_MBUS_CSI2_DPHY,
++	};
++	struct fwnode_handle *ep;
++	unsigned long link_freq_bitmap;
++	int ret;
++
++	ep = fwnode_graph_get_endpoint_by_id(dev_fwnode(gc02m2->dev), 0, 0, 0);
++	if (!ep)
++		return dev_err_probe(gc02m2->dev, -EPROBE_DEFER,
++				     "waiting for the endpoint\n");
++
++	ret = v4l2_fwnode_endpoint_alloc_parse(ep, &bus_cfg);
++	fwnode_handle_put(ep);
++	if (ret)
++		return dev_err_probe(gc02m2->dev, ret,
++				     "failed to parse the endpoint\n");
++
++	if (bus_cfg.bus.mipi_csi2.num_data_lanes != 1) {
++		ret = dev_err_probe(gc02m2->dev, -EINVAL,
++				    "%u data lanes, only 1 is supported\n",
++				    bus_cfg.bus.mipi_csi2.num_data_lanes);
++		goto out;
++	}
++
++	ret = v4l2_link_freq_to_bitmap(gc02m2->dev, bus_cfg.link_frequencies,
++				       bus_cfg.nr_of_link_frequencies,
++				       gc02m2_link_freqs,
++				       ARRAY_SIZE(gc02m2_link_freqs),
++				       &link_freq_bitmap);
++out:
++	v4l2_fwnode_endpoint_free(&bus_cfg);
++	return ret;
++}
++
++static int gc02m2_init_controls(struct gc02m2 *gc02m2)
++{
++	const struct gc02m2_mode *mode = &gc02m2_modes[0];
++	struct v4l2_ctrl_handler *hdl = &gc02m2->ctrls;
++	struct v4l2_fwnode_device_properties props;
++	struct v4l2_ctrl *ctrl;
++	s64 vblank, hblank, exp_max;
++	int ret;
++
++	v4l2_ctrl_handler_init(hdl, 10);
++
++	ctrl = v4l2_ctrl_new_int_menu(hdl, NULL, V4L2_CID_LINK_FREQ, 0, 0,
++				      gc02m2_link_freqs);
++	if (ctrl)
++		ctrl->flags |= V4L2_CTRL_FLAG_READ_ONLY;
++
++	v4l2_ctrl_new_std(hdl, NULL, V4L2_CID_PIXEL_RATE, GC02M2_PIXEL_RATE,
++			  GC02M2_PIXEL_RATE, 1, GC02M2_PIXEL_RATE);
++
++	hblank = GC02M2_HTS - mode->width;
++	gc02m2->hblank = v4l2_ctrl_new_std(hdl, NULL, V4L2_CID_HBLANK, hblank,
++					   hblank, 1, hblank);
++	if (gc02m2->hblank)
++		gc02m2->hblank->flags |= V4L2_CTRL_FLAG_READ_ONLY;
++
++	vblank = mode->vts_def - mode->height;
++	gc02m2->vblank = v4l2_ctrl_new_std(hdl, &gc02m2_ctrl_ops,
++					   V4L2_CID_VBLANK, vblank,
++					   GC02M2_VTS_MAX - mode->height, 1,
++					   vblank);
++
++	exp_max = mode->vts_def - GC02M2_EXPOSURE_MARGIN;
++	gc02m2->exposure = v4l2_ctrl_new_std(hdl, &gc02m2_ctrl_ops,
++					     V4L2_CID_EXPOSURE,
++					     GC02M2_EXPOSURE_MIN, exp_max, 1,
++					     GC02M2_EXPOSURE_DEF);
++
++	v4l2_ctrl_new_std(hdl, &gc02m2_ctrl_ops, V4L2_CID_ANALOGUE_GAIN,
++			  GC02M2_GAIN_MIN, GC02M2_GAIN_MAX, 1, GC02M2_GAIN_DEF);
++
++	gc02m2->hflip = v4l2_ctrl_new_std(hdl, &gc02m2_ctrl_ops,
++					  V4L2_CID_HFLIP, 0, 1, 1, 0);
++	gc02m2->vflip = v4l2_ctrl_new_std(hdl, &gc02m2_ctrl_ops,
++					  V4L2_CID_VFLIP, 0, 1, 1, 0);
++
++	ret = v4l2_fwnode_device_parse(gc02m2->dev, &props);
++	if (ret)
++		goto err_free;
++
++	ret = v4l2_ctrl_new_fwnode_properties(hdl, &gc02m2_ctrl_ops, &props);
++	if (ret)
++		goto err_free;
++
++	if (hdl->error) {
++		ret = hdl->error;
++		goto err_free;
++	}
++
++	gc02m2->sd.ctrl_handler = hdl;
++
++	return 0;
++
++err_free:
++	v4l2_ctrl_handler_free(hdl);
++	return ret;
++}
++
++static int gc02m2_probe(struct i2c_client *client)
++{
++	struct device *dev = &client->dev;
++	struct gc02m2 *gc02m2;
++	unsigned int i;
++	int ret;
++
++	gc02m2 = devm_kzalloc(dev, sizeof(*gc02m2), GFP_KERNEL);
++	if (!gc02m2)
++		return -ENOMEM;
++
++	gc02m2->dev = dev;
++
++	ret = gc02m2_check_hwcfg(gc02m2);
++	if (ret)
++		return ret;
++
++	gc02m2->mclk = devm_v4l2_sensor_clk_get(dev, NULL);
++	if (IS_ERR(gc02m2->mclk))
++		return dev_err_probe(dev, PTR_ERR(gc02m2->mclk),
++				     "failed to get MCLK\n");
++	if (clk_get_rate(gc02m2->mclk) != GC02M2_MCLK_FREQ)
++		dev_warn(dev, "MCLK is %lu Hz, the register table expects 24 MHz\n",
++			 clk_get_rate(gc02m2->mclk));
++
++	for (i = 0; i < GC02M2_NUM_SUPPLIES; i++)
++		gc02m2->supplies[i].supply = gc02m2_supply_names[i];
++	ret = devm_regulator_bulk_get(dev, GC02M2_NUM_SUPPLIES,
++				      gc02m2->supplies);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to get supplies\n");
++
++	gc02m2->reset_gpio = devm_gpiod_get_optional(dev, "reset",
++						     GPIOD_OUT_HIGH);
++	if (IS_ERR(gc02m2->reset_gpio))
++		return dev_err_probe(dev, PTR_ERR(gc02m2->reset_gpio),
++				     "failed to get the reset GPIO\n");
++
++	gc02m2->powerdown_gpio = devm_gpiod_get_optional(dev, "powerdown",
++							 GPIOD_OUT_HIGH);
++	if (IS_ERR(gc02m2->powerdown_gpio))
++		return dev_err_probe(dev, PTR_ERR(gc02m2->powerdown_gpio),
++				     "failed to get the powerdown GPIO\n");
++
++	gc02m2->regmap = devm_cci_regmap_init_i2c(client, 8);
++	if (IS_ERR(gc02m2->regmap))
++		return dev_err_probe(dev, PTR_ERR(gc02m2->regmap),
++				     "failed to init CCI\n");
++
++	v4l2_i2c_subdev_init(&gc02m2->sd, client, &gc02m2_subdev_ops);
++	gc02m2->sd.internal_ops = &gc02m2_internal_ops;
++
++	ret = gc02m2_power_on(dev);
++	if (ret)
++		return ret;
++
++	ret = gc02m2_identify(gc02m2);
++	if (ret)
++		goto err_power_off;
++
++	ret = gc02m2_init_controls(gc02m2);
++	if (ret)
++		goto err_power_off;
++
++	gc02m2->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
++	gc02m2->sd.entity.function = MEDIA_ENT_F_CAM_SENSOR;
++	gc02m2->pad.flags = MEDIA_PAD_FL_SOURCE;
++	ret = media_entity_pads_init(&gc02m2->sd.entity, 1, &gc02m2->pad);
++	if (ret)
++		goto err_ctrls;
++
++	gc02m2->sd.state_lock = gc02m2->ctrls.lock;
++	ret = v4l2_subdev_init_finalize(&gc02m2->sd);
++	if (ret)
++		goto err_entity;
++
++	pm_runtime_set_active(dev);
++	pm_runtime_get_noresume(dev);
++	pm_runtime_enable(dev);
++	pm_runtime_set_autosuspend_delay(dev, 1000);
++	pm_runtime_use_autosuspend(dev);
++
++	ret = v4l2_async_register_subdev_sensor(&gc02m2->sd);
++	if (ret)
++		goto err_pm;
++
++	pm_runtime_put_autosuspend(dev);
++
++	return 0;
++
++err_pm:
++	pm_runtime_disable(dev);
++	pm_runtime_set_suspended(dev);
++	pm_runtime_put_noidle(dev);
++	v4l2_subdev_cleanup(&gc02m2->sd);
++err_entity:
++	media_entity_cleanup(&gc02m2->sd.entity);
++err_ctrls:
++	v4l2_ctrl_handler_free(&gc02m2->ctrls);
++err_power_off:
++	gc02m2_power_off(dev);
++	return ret;
++}
++
++static void gc02m2_remove(struct i2c_client *client)
++{
++	struct v4l2_subdev *sd = i2c_get_clientdata(client);
++	struct gc02m2 *gc02m2 = to_gc02m2(sd);
++
++	v4l2_async_unregister_subdev(sd);
++	v4l2_subdev_cleanup(sd);
++	media_entity_cleanup(&sd->entity);
++	v4l2_ctrl_handler_free(&gc02m2->ctrls);
++
++	pm_runtime_disable(&client->dev);
++	if (!pm_runtime_status_suspended(&client->dev))
++		gc02m2_power_off(&client->dev);
++	pm_runtime_set_suspended(&client->dev);
++}
++
++static DEFINE_RUNTIME_DEV_PM_OPS(gc02m2_pm_ops, gc02m2_power_off,
++				 gc02m2_power_on, NULL);
++
++static const struct of_device_id gc02m2_of_match[] = {
++	{ .compatible = "galaxycore,gc02m2" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, gc02m2_of_match);
++
++static struct i2c_driver gc02m2_driver = {
++	.driver = {
++		.name = "gc02m2",
++		.of_match_table = gc02m2_of_match,
++		.pm = pm_ptr(&gc02m2_pm_ops),
++	},
++	.probe = gc02m2_probe,
++	.remove = gc02m2_remove,
++};
++module_i2c_driver(gc02m2_driver);
++
++MODULE_DESCRIPTION("GalaxyCore GC02M2 camera sensor driver");
++MODULE_LICENSE("GPL");
+-- 
+2.43.0
+

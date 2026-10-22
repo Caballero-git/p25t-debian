@@ -1,0 +1,57 @@
+#+TITLE: P25T kernel patches
+
+* What this is
+30 patches on the Linux 7.3 release (tag =v7.3=, commit
+=c03c1a14507dfaf8b856c2608f9ac216021fc222=, 2026-10-18). They add the
+Teclast P25T (P9A6, RK3566): its device tree, the panel, touchscreen,
+cameras and a few driver fixes. =tools/get_kernel.sh= downloads 7.3 and
+applies them; the first patch carries the =base-commit:= line.
+
+They were written during the tablet's bring-up on a commit between
+7.3-rc4 and rc5 and moved to 7.3 on 2026-10-22 without a conflict: none
+of the 18 files they touch changed upstream in between, and the device
+trees built from 7.3 are byte-identical to the earlier ones.
+
+* The patches
+| Patch | What                                                         |
+|-------+--------------------------------------------------------------|
+| 0001  | panel driver: Jadard JD9365 panel of the P25T                |
+| 0002  | device tree: Teclast P25T (P9A6), base                       |
+| 0003  | panel driver: mode from an optional panel-timing node        |
+| 0004  | USB: the stock DWC3 quirks                                   |
+| 0005  | SDIO Wi-Fi (AIC8800) on sdmmc1                               |
+| 0006  | Bluetooth on UART1 (AIC8800)                                 |
+| 0007  | USB-C host mode: a second device tree                        |
+| 0008  | RK817 BOOST and OTG_SWITCH                                   |
+| 0009  | RK817 charger and battery data                               |
+| 0010  | vdd_cpu (SYR837), CPU frequency scaling                      |
+| 0011  | i2c1, SC7A20 accelerometer                                   |
+| 0012  | vdd_gpu (RK817 DCDC_REG2), GPU frequency scaling             |
+| 0013  | RK817 audio codec, i2s1                                      |
+| 0014  | SoC thermal sensor (tsadc)                                   |
+| 0015  | Silead GSL3673 touchscreen                                   |
+| 0016  | Input: silead - tolerate a missing ACK on soft reset         |
+| 0017  | GSL3673 firmware, built into the kernel                      |
+| 0018  | speaker amplifier, polled accelerometer                      |
+| 0019  | camera IO power bank, rear torch LED                         |
+| 0020  | landscape orientation of the panel                           |
+| 0021  | panel timing node                                            |
+| 0022  | accelerometer mount matrix (measured)                        |
+| 0023  | i2c1 at 400 kHz                                              |
+| 0024  | GalaxyCore GC5035 sensor driver (rear camera)                |
+| 0025  | rear camera pipeline, LDO9                                   |
+| 0026  | RK817 LDO2 at 1.2 V for the rear camera                      |
+| 0027  | rkcif: stop the capture at a frame end, then the sensor      |
+| 0028  | inno-csidphy: RK3568 split mode (lanes 2-3)                  |
+| 0029  | GalaxyCore GC02M2 sensor driver (front camera)               |
+| 0030  | front camera: two more device trees (-front, -front-usbhost) |
+
+* Notes
+- Some commit messages still give the numbers the patches had during the
+  bring-up (e.g. "patch 0008"); the bring-up history is not public.
+- The kernel makes four device trees: =rk3566-teclast-p25t.dtb= (USB-C
+  as a device), =-usbhost= (USB-C as a host, e.g. a cable keyboard),
+  =-front= and =-front-usbhost= (the same with the front camera instead
+  of the rear one).
+- The firmware note in 0017 names a bring-up tool that is not public;
+  the firmware itself is in the patch.

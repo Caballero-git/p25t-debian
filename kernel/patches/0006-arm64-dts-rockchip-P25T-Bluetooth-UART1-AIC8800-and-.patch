@@ -1,0 +1,51 @@
+From 03cba1a56ba4cd73eb8fbb58c7dd0d60de406e42 Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Fri, 25 Sep 2026 20:52:26 +0200
+Subject: [PATCH 06/30] arm64: dts: rockchip: P25T: Bluetooth UART1 (AIC8800)
+ and BT_REG_ON
+
+UART1 on the uart1m0 pins with RTS/CTS for the AIC8800 Bluetooth (H4,
+1.5 Mbaud, attached from user space), BT_REG_ON GPIO0_C1 held high.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0156c5MfQpFxaYWNNLMrcym9
+---
+ .../boot/dts/rockchip/rk3566-teclast-p25t.dts | 21 +++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index 0f219dbf7..c3e401b5a 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -173,6 +173,27 @@ &pmu_io_domains {
+ 	status = "okay";
+ };
+ 
++/*
++ * Bluetooth half of the AIC8800: H4 over UART1 (uart1m0 pins, RTS/CTS), 1.5 Mbaud,
++ * attached from user space with btattach. BT_REG_ON = GPIO0_C1, high = on
++ * (stock rfkill-bt: BT,reset_gpio GPIO0_C1 flags 0, driven high to power on).
++ */
++&uart1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart1m0_xfer &uart1m0_ctsn &uart1m0_rtsn>;
++	uart-has-rtscts;
++	status = "okay";
++};
++
++&gpio0 {
++	bt-reg-on-hog {
++		gpio-hog;
++		gpios = <RK_PC1 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "bt_reg_on";
++	};
++};
++
+ &uart2 {
+ 	status = "okay";
+ };
+-- 
+2.43.0
+

@@ -1,0 +1,164 @@
+From 32ed24aa83b0b29cddb36533dce12648682f3f7a Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Thu, 1 Oct 2026 07:51:29 +0200
+Subject: [PATCH 18/30] arm64: dts: rockchip: P25T: built-in speaker amplifier,
+ polled accelerometer
+
+The stock device tree enables the RK817 codec's "use-ext-amplifier"
+mode with spk-ctl-gpios = GPIO3_A2: the codec's headphone stage feeds
+an external speaker amplifier whose enable input is GPIO3_A2. The
+internal class-D stage is not used.
+
+Patch 0013 had given GPIO3_A2 to the SC7A20 accelerometer as a
+level-low interrupt, copied from the stock node's irq-gpio - but the
+stock node also has irq_enable = <0> (polled). With the pin held low
+by the amplifier, the IRQ fired 100000 times at boot and was disabled
+("irq 61: nobody cared"), and the amplifier could never be switched on.
+
+- accelerometer: drop the interrupt; st_accel works polled.
+- add a simple-audio-amplifier on GPIO3_A2 as an aux device of the
+  sound card, fed from HPOL/HPOR, same pattern as
+  rk3326-gameforce-chi.dts (RK817 + external amp).
+- headphone detect on GPIO3_A1 (stock rk-headset headset_gpio, active
+  low, pull-down; measured 1 unplugged / 0 plugged): the jack switches
+  the "Headphones" pin.
+- "Internal Speakers" pin switch, so a sound server (or amixer on the
+  console) can mute the speaker when headphones are plugged in.
+
+Needs CONFIG_SND_SOC_SIMPLE_AMPLIFIER. Tested by driving GPIO3_A2 by
+hand (tests/test_11.sh): tone on the built-in speaker with the
+Playback Mux at "HP".
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../boot/dts/rockchip/rk3566-teclast-p25t.dts | 83 +++++++++++++++----
+ 1 file changed, 69 insertions(+), 14 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index 36da5cf29..04e61a284 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -162,11 +162,54 @@ battery: battery {
+ 	 * cpu-side controller. See the pmic@20/rk817 node comment above and
+ 	 * &i2s1_8ch below for the clock/pin details.
+ 	 */
++	/*
++	 * Built-in speaker (2026-10-01). Stock: rk817 codec "use-ext-amplifier"
++	 * with spk-ctl-gpios = GPIO3_A2 (active high): the codec's headphone
++	 * stage feeds an external amplifier whose enable pin is GPIO3_A2; the
++	 * internal class-D stage (Playback Mux "SPK") is not used. Confirmed by
++	 * tests/test_11.sh: GPIO3_A2 high + Playback Mux "HP" plays on the
++	 * speaker. Same pattern as rk3326-gameforce-chi.dts (RK817 + ext amp).
++	 */
++	spk_amp: audio-amplifier {
++		compatible = "simple-audio-amplifier";
++		enable-gpios = <&gpio3 RK_PA2 GPIO_ACTIVE_HIGH>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&spk_amp_enable_h>;
++		sound-name-prefix = "Speaker Amp";
++	};
++
+ 	rk817-sound {
+ 		compatible = "simple-audio-card";
+ 		simple-audio-card,name = "Analog RK817";
++		simple-audio-card,aux-devs = <&spk_amp>;
+ 		simple-audio-card,format = "i2s";
++		/*
++		 * Headphone detect: stock rk-headset headset_gpio = GPIO3_A1,
++		 * active low, pin pulled down. Measured: 1 unplugged, 0 with
++		 * headphones in (gpioget, 2026-10-01). Same pin Android names
++		 * "headset_input" in /proc/interrupts.
++		 */
++		simple-audio-card,hp-det-gpios = <&gpio3 RK_PA1 GPIO_ACTIVE_LOW>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&hp_det>;
+ 		simple-audio-card,mclk-fs = <256>;
++		simple-audio-card,widgets =
++			"Headphone", "Headphones",
++			"Speaker", "Internal Speakers";
++		simple-audio-card,routing =
++			"Headphones", "HPOL",
++			"Headphones", "HPOR",
++			"Speaker Amp INL", "HPOL",
++			"Speaker Amp INR", "HPOR",
++			"Internal Speakers", "Speaker Amp OUTL",
++			"Internal Speakers", "Speaker Amp OUTR";
++		/*
++		 * The jack switches the "Headphones" pin by itself. The speaker
++		 * is not muted by the kernel when headphones go in: a sound
++		 * server (PipeWire/PulseAudio) does that from the jack event;
++		 * on the console: amixer cset name='Internal Speakers Switch' off
++		 */
++		simple-audio-card,pin-switches = "Internal Speakers";
+ 
+ 		simple-audio-card,cpu {
+ 			sound-dai = <&i2s1_8ch>;
+@@ -431,17 +474,10 @@ rk817: pmic@20 {
+ 		 * rockchip,i2s-tdm.yaml's own worked example, which uses the
+ 		 * identical &i2s1_8ch + i2s1m0 + trcm-sync-tx-only combination.
+ 		 *
+-		 * spk-ctl-gpios deliberately NOT carried over: stock's value
+-		 * (<&gpio3 2 ...>, GPIO3_A2) is the exact same physical pin
+-		 * already confirmed on real hardware to be the SC7A20
+-		 * accelerometer's IRQ line (patch 0013) - a single pin cannot
+-		 * serve both. The quartz64-a reference board doesn't wire any
+-		 * speaker-amp GPIO either, so this is omitted rather than
+-		 * guessed. Practical effect, unconfirmed until tested: the
+-		 * built-in speaker's amplifier may need to be enabled some
+-		 * other way (or may default on/off in hardware) - headphone
+-		 * jack output should be unaffected either way. See
+-		 * hardware.org/todo.org.
++		 * spk-ctl-gpios: mainline rk817_codec has no such property. The
++		 * pin it names (GPIO3_A2) is the external speaker amplifier's
++		 * enable - see spk_amp at the top of this file (2026-10-01;
++		 * patch 0013 had wrongly taken it for the accelerometer IRQ).
+ 		 */
+ 		assigned-clocks = <&cru I2S1_MCLKOUT_TX>;
+ 		assigned-clock-parents = <&cru CLK_I2S1_8CH_TX>;
+@@ -617,7 +653,8 @@ touchscreen@40 {
+ 	};
+ 
+ 	/*
+-	 * IRQ: stock DT's irq-gpio = <0x3e 0x02 0x08> (0x3e is gpio@fe760000,
++	 * IRQ (superseded 2026-10-01, interrupt removed - see the node below):
++	 * stock DT's irq-gpio = <0x3e 0x02 0x08> (0x3e is gpio@fe760000,
+ 	 * i.e. gpio3) decodes to GPIO3_A2 (bank 3, pin 2), flags 0x08 =
+ 	 * IRQ_TYPE_LEVEL_LOW - same
+ 	 * raw-cells style already used for RK817's interrupt above (bank's
+@@ -643,8 +680,12 @@ touchscreen@40 {
+ 	accelerometer@19 {
+ 		compatible = "silan,sc7a20";
+ 		reg = <0x19>;
+-		interrupt-parent = <&gpio3>;
+-		interrupts = <2 8>; /* GPIO3_A2, IRQ_TYPE_LEVEL_LOW - matches stock */
++		/*
++		 * No interrupt: GPIO3_A2 is the speaker amplifier enable (see
++		 * spk_amp). Stock polls this sensor (irq_enable = <0>); as an
++		 * IRQ the pin fired 100000 times at boot ("irq 61: nobody
++		 * cared", tests/result_11_speaker2.txt). Polled sysfs reads work.
++		 */
+ 		mount-matrix = "0", "1", "0",
+ 				"-1", "0", "0",
+ 				"0", "0", "1";
+@@ -701,3 +742,17 @@ &tsadc {
+ 	rockchip,hw-tshut-polarity = <0>; /* GPIO active-low */
+ 	status = "okay";
+ };
++
++&pinctrl {
++	headphone {
++		hp_det: hp-det {
++			rockchip,pins = <3 RK_PA1 RK_FUNC_GPIO &pcfg_pull_down>;
++		};
++	};
++
++	audio-amplifier {
++		spk_amp_enable_h: spk-amp-enable-h {
++			rockchip,pins = <3 RK_PA2 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++	};
++};
+-- 
+2.43.0
+

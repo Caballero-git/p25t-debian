@@ -1,0 +1,2 @@
+# everything the scripts build or download (kernel objects, rootfs, images)
+build/

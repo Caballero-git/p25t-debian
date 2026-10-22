@@ -1,0 +1,110 @@
+From fe263b614822240ac5d9585988162f07e1197b02 Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 21:20:49 +0200
+Subject: [PATCH 11/30] arm64: dts: rockchip: P25T: enable i2c1, SC7A20
+ accelerometer
+
+The stock device tree lists two alternative accelerometers on i2c1,
+SC7A20 at 0x19 and DA223 at 0x27. On this tablet only 0x19 answers.
+Its WHOAMI is 0x11, not the LIS2DH value 0x33, but mainline already
+supports this clone: st_accel_i2c's "silan,sc7a20" (wai 0x11), so no
+new driver is needed. Enable i2c1 and add the accelerometer@19 node.
+
+The interrupt line is copied from stock here; a later patch drops it
+(the stock driver polls, and GPIO3_A2 is really the speaker amplifier
+enable). The mount-matrix here is translated from the stock driver's
+swap/revert flags; a later patch replaces it with a measured one.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019kgfNtsGWnCDNQnFvegC9W
+---
+ .../boot/dts/rockchip/rk3566-teclast-p25t.dts | 68 +++++++++++++++++--
+ 1 file changed, 63 insertions(+), 5 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index c034f062b..561f6425a 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -332,11 +332,12 @@ &pwm14 {
+ };
+ 
+ /*
+- * I2C0: RK817 PMIC @0x20, SYR837 @0x40 (SYR837 still has no node, read-only
+- * probing only). The RK817 node below is deliberately minimal: only the
+- * two regulators needed to power the USB-C port's VBUS, nothing else on
+- * the chip (no battery/codec/pwrkey/RTC). Values copied verbatim from the
+- * stock Android device tree (Firmware/dt/boot-0-0x6c0fe00.dts):
++ * I2C0: RK817 PMIC @0x20 (BOOST/OTG_SWITCH regulators + charger/battery,
++ * patches 0008-0009) and SYR837 @0x40 (vdd_cpu, patch 0011). The RK817
++ * node itself stays deliberately minimal beyond that (no codec/pwrkey
++ * node - both came up for free once the chip had any node at all).
++ * Values copied verbatim from the stock Android device tree
++ * (Firmware/dt/boot-0-0x6c0fe00.dts):
+  *   - BOOST: regulator-always-on there too - stock never turns this rail
+  *     off, we are not switching on anything stock treats as off.
+  *   - OTG_SWITCH: stock leaves it switchable (its own USB HAL enables it
+@@ -434,3 +435,60 @@ &cpu2 {
+ &cpu3 {
+ 	cpu-supply = <&vdd_cpu>;
+ };
++
++/*
++ * I2C1: the stock DT lists TWO alternative accelerometers here, both
++ * marked status="okay" unlike vdd_cpu's four alternatives on i2c0 (only
++ * one of which was real) - so Android probes both and whichever chip
++ * actually answers wins. Patch 0012 enabled the bus with no child node
++ * and confirmed on hardware (tests/test_02.sh, see kernel.org) which one
++ * is really here:
++ *   - sensor@19  "gs_sc7a20"  0x19 - PRESENT. WHOAMI (reg 0x0f) reads
++ *     back 0x11, which does not match the generic ST LIS3DH/LIS2DH12
++ *     family (0x33) - but mainline already carries a dedicated entry
++ *     for this exact clone: drivers/iio/accel/st_accel_i2c.c's
++ *     "silan,sc7a20" compatible -> st_accel_core.c's SC7A20_ACCEL_DEV_NAME
++ *     sensor_settings, wai = 0x11 (comment there: "Not an ST part.
++ *     Register-compatible with the LIS2DH, even though the WAI value is
++ *     different."). No new driver needed.
++ *   - sensorda@27 "gs_da223"  0x27 - NOT present (no ACK). Moot now, but
++ *     for the record: no mainline driver exists for this chip at all.
++ * i2c1 also feeds the touchscreen (Silead GSL3673 @0x40, separate TODO).
++ */
++&i2c1 {
++	status = "okay";
++
++	/*
++	 * IRQ: stock DT's irq-gpio = <0x3e 0x02 0x08> (0x3e is gpio@fe760000,
++	 * i.e. gpio3) decodes to GPIO3_A2 (bank 3, pin 2), flags 0x08 =
++	 * IRQ_TYPE_LEVEL_LOW - same
++	 * raw-cells style already used for RK817's interrupt above (bank's
++	 * own interrupt-cells = <2>: pin-in-bank, IRQ_TYPE_* flag).
++	 *
++	 * mount-matrix: stock DT has no such property - it instead carries
++	 * Android-specific boolean flags (swap_xy=1, revert_x=0, revert_y=1,
++	 * revert_z=0) consumed by a closed-source sensor HAL/driver we don't
++	 * have access to, not any documented mainline binding. The matrix
++	 * below is our best-effort translation, assuming the common
++	 * "swap first, then negate" convention:
++	 *   swapped = swap_xy ? (rawY, rawX) : (rawX, rawY)
++	 *   out     = (revert_x ? -swapped.x : swapped.x,
++	 *              revert_y ? -swapped.y : swapped.y,
++	 *              revert_z ? -swapped.z : swapped.z)
++	 * which with these flags gives out = (rawY, -rawX, rawZ), i.e. the
++	 * matrix below. NOT verified against the real Android driver source
++	 * (proprietary, unavailable) - only against the four flag values
++	 * themselves. Treat screen-rotation/orientation behaviour as
++	 * unconfirmed until checked against real tilt tests; see
++	 * hardware.org/todo.org.
++	 */
++	accelerometer@19 {
++		compatible = "silan,sc7a20";
++		reg = <0x19>;
++		interrupt-parent = <&gpio3>;
++		interrupts = <2 8>; /* GPIO3_A2, IRQ_TYPE_LEVEL_LOW - matches stock */
++		mount-matrix = "0", "1", "0",
++				"-1", "0", "0",
++				"0", "0", "1";
++	};
++};
+-- 
+2.43.0
+

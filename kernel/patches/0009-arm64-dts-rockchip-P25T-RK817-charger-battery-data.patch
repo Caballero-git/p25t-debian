@@ -1,0 +1,66 @@
+From 4c38a65aeef7a22b1e5ba7310ef26fef5a12bc92 Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Sat, 26 Sep 2026 14:00:23 +0200
+Subject: [PATCH 09/30] arm64: dts: rockchip: P25T: RK817 charger + battery
+ data
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../boot/dts/rockchip/rk3566-teclast-p25t.dts | 34 +++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index 7529c47d5..b736cfd90 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -127,6 +127,33 @@ button-vol-down {
+ 			press-threshold-microvolt = <1297500>;
+ 		};
+ 	};
++
++	/*
++	 * Battery data for the RK817 charger, copied from the stock Android
++	 * device tree (Firmware/dt/boot-0-0x6c0fe00.dts: design_capacity,
++	 * chrg_finish_cur, max_chrg_current, max_chrg_voltage,
++	 * zero_algorithm_vol, and the 21-point OCV table), converted to the
++	 * generic power-supply/battery.yaml units mainline's rk817_charger
++	 * driver expects. Cross-checked for units/shape against a real
++	 * mainline board using the same driver (rk3566-pinetab2.dtsi).
++	 */
++	battery: battery {
++		compatible = "simple-battery";
++		charge-full-design-microamp-hours = <5300000>;
++		charge-term-current-microamp = <200000>;
++		constant-charge-current-max-microamp = <2000000>;
++		constant-charge-voltage-max-microvolt = <4350000>;
++		voltage-max-design-microvolt = <4350000>;
++		voltage-min-design-microvolt = <3400000>;
++
++		ocv-capacity-celsius = <20>;
++		ocv-capacity-table-0 = <4313000 100>, <4257000 95>, <4199000 90>, <4144000 85>,
++				       <4093000 80>, <4035000 75>, <3992000 70>, <3955000 65>,
++				       <3915000 60>, <3866000 55>, <3834000 50>, <3804000 45>,
++				       <3788000 40>, <3776000 35>, <3765000 30>, <3745000 25>,
++				       <3724000 20>, <3677000 15>, <3608000 10>, <3543000 5>,
++				       <3400000 0>;
++	};
+ };
+ 
+ &saradc {
+@@ -346,5 +373,12 @@ rk817_otg_switch: OTG_SWITCH {
+ 				regulator-name = "otg_switch";
+ 			};
+ 		};
++
++		charger {
++			monitored-battery = <&battery>;
++			rockchip,resistor-sense-micro-ohms = <10000>;
++			rockchip,sleep-enter-current-microamp = <150000>;
++			rockchip,sleep-filter-current-microamp = <100000>;
++		};
+ 	};
+ };
+-- 
+2.43.0
+

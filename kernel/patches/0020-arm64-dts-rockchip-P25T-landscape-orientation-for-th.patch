@@ -1,0 +1,46 @@
+From ede4a1a815c1c3848bd6f671f5016d4d673d3ef0 Mon Sep 17 00:00:00 2001
+From: "Jose M. Caballero Guerrero"
+ <80172778+Caballero-git@users.noreply.github.com>
+Date: Thu, 1 Oct 2026 13:59:48 +0200
+Subject: [PATCH 20/30] arm64: dts: rockchip: P25T: landscape orientation for
+ the panel
+
+The tablet is used in landscape, held with the panel's right edge up.
+Describe that with the panel-common "rotation" property (90 -> DRM
+panel orientation "Right Side Up"), so the framebuffer console and
+Wayland compositors rotate the picture by themselves; the jadard panel
+driver already reads it (drm_of_get_panel_orientation).
+
+The console rotation needs CONFIG_FRAMEBUFFER_CONSOLE_ROTATION=y. The
+panel still scans out 800x1280 and the touchscreen keeps reporting
+panel coordinates (a compositor maps touch through the output
+transform).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+index 5cd531aab..2223790c9 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3566-teclast-p25t.dts
+@@ -403,6 +403,15 @@ &dsi0 {
+ 	panel@0 {
+ 		compatible = "teclast,p25t-panel";
+ 		reg = <0>;
++		/*
++		 * Landscape use (patch 0023): the device is held with the
++		 * panel's right edge up. rotation = 90 -> DRM panel orientation
++		 * "Right Side Up" -> the console (fbcon, needs
++		 * CONFIG_FRAMEBUFFER_CONSOLE_ROTATION) and Wayland compositors
++		 * rotate the picture by themselves. The panel still scans out
++		 * 800x1280; the touchscreen keeps reporting panel coordinates.
++		 */
++		rotation = <90>;
+ 		backlight = <&backlight>;
+ 		reset-gpios = <&gpio3 RK_PC3 GPIO_ACTIVE_LOW>;
+ 		vdd-supply = <&vcc_lcd>;
+-- 
+2.43.0
+
