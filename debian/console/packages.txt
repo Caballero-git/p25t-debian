@@ -1,0 +1,5 @@
+# debian/console/packages.txt - the console desktop (text only), on top of
+# debian/common/packages.txt.
+#
+# Mouse and touch on the text console: select and paste text
+consolation

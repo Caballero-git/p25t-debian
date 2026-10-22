@@ -1,0 +1,4 @@
+# debian/console/under_test.txt - programs being tried on the console,
+# not installed by the build. Try one with: sudo apt install <PACKAGE>
+# When it works well: move it to tested.txt (or packages.txt). When it
+# does not: move it to discarded.txt with the reason.

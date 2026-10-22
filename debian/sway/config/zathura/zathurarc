@@ -1,0 +1,22 @@
+# P25T zathura config (PDF reader) - repo: debian/sway/config/zathura/zathurarc
+# Installed as ~/.config/zathura/zathurarc by the card build (debian/sway/setup.sh).
+# Dark like foot's "dim" palette: pages are shown recoloured (light text
+# on #1c1c1c), keeping the hues of figures. Ctrl+r switches to the
+# original colours and back.
+set font "Terminus 13.5"
+set default-bg "#1c1c1c"
+set default-fg "#b0b0b0"
+set statusbar-bg "#1c1c1c"
+set statusbar-fg "#b0b0b0"
+set inputbar-bg "#1c1c1c"
+set inputbar-fg "#d0d0d0"
+set notification-bg "#1c1c1c"
+set notification-fg "#d0d0d0"
+set notification-error-bg "#1c1c1c"
+set notification-error-fg "#c86464"
+set highlight-color "#c8b464"
+set highlight-active-color "#6482c8"
+set recolor true
+set recolor-keephue true
+set recolor-lightcolor "#1c1c1c"
+set recolor-darkcolor "#b0b0b0"

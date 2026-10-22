@@ -1,0 +1,40 @@
+# debian/common/tested.txt - optional programs, proven to work on the
+# tablet. tools/build_debian.sh asks whether to install them too.
+# Move a line to packages.txt to make it part of every card.
+#
+# Editors
+emacs-nox
+emacs-common-non-dfsg
+elpa-csv-mode
+elpa-htmlize
+# Python development (compilers for pip packages with C parts)
+python3-dev
+python3-pip
+python3-venv
+python3-textual
+python3-doc
+python-is-python3
+build-essential
+# Shell tools
+git
+tmux
+ncdu
+tree
+ytree
+bat
+btop
+strace
+sqlite3
+aptitude
+dialog
+command-not-found
+# Hardware information and development
+acpi
+upower
+lm-sensors
+gpiod
+device-tree-compiler
+# Sync
+syncthing
+# Music player in the shell (ALSA only)
+alsaplayer-text

@@ -22,12 +22,11 @@ alone.
 - A USB card reader.
 - A PC (called =pc_linux= here): x86-64, a Debian-family Linux (Debian,
   Ubuntu, Linux Mint), =sudo= rights, internet access, and free disk
-  space (so far 3.6 GB: 2 GB for the kernel source, 1 GB for the kernel
-  build, 0.5 GB for the boot loader; the total is measured as the steps
-  are added).
+  space: about 3.6 GB for steps 1-3 (2 GB kernel source, 1 GB kernel
+  build, 0.5 GB boot loader) and 6 GB free for step 4 (Debian).
 - Packages, so far (one line):
   #+begin_example
-  sudo apt install git build-essential gcc-aarch64-linux-gnu bc bison flex libssl-dev libelf-dev kmod cpio patch swig python3-dev python3-setuptools libgnutls28-dev uuid-dev curl bzip2
+  sudo apt install git build-essential gcc-aarch64-linux-gnu bc bison flex libssl-dev libelf-dev kmod cpio patch swig python3-dev python3-setuptools libgnutls28-dev uuid-dev curl bzip2 mmdebstrap qemu-user-static binfmt-support debian-archive-keyring gpg
   #+end_example
 
 * Building a card
@@ -95,7 +94,62 @@ script explains itself in its header.
      says whether its result is identical to the author's. Another
      compiler version gives other checksums, which is no error.
 
-Next steps, being added: Debian, and writing the card.
+4. Debian (10-25 minutes after the questions):
+   #+begin_example
+   bash <WORK>/p25t-debian/tools/build_debian.sh sway
+   #+end_example
+   (or =console= instead of =sway= for a text-only card; without a name
+   it lists the desktops it finds in =debian/=). It asks for =sudo=, then
+   its questions, as the Debian installer does:
+   - user name and password on the tablet, and the host name (=p25t=);
+   - the Wi-Fi network and its password (optional; empty = none);
+   - an SSH public key for logins from the PC (optional);
+   - time zone, language and keyboard: it prints the PC's values and
+     asks whether to use them, or asks for each;
+   - whether to add the optional programs of =tested.txt= (see "Programs"
+     below).
+   It shows a summary and builds only after a "y". Debian 13 (trixie)
+   arm64 comes from =deb.debian.org=, without Recommends, into
+   =build/rootfs-<DESKTOP>/=, with the kernel modules and Wi-Fi firmware
+   of step 2 and the tablet settings of =debian/common/setup.sh= and
+   =debian/<DESKTOP>/setup.sh=. The passwords are stored only on the new
+   system (as hashes), never in a file of the build. To build again,
+   remove the old folder first (the script says how).
+
+Next step, being added: writing the card.
+
+* Programs
+Each folder of =debian/= has four lists, one package per line:
+| List             | Installed?                     | What                               |
+|------------------+--------------------------------+------------------------------------|
+| =packages.txt=   | always                         | needed, and proven on the tablet   |
+| =tested.txt=     | if you answer "y"              | optional, proven on the tablet     |
+| =under_test.txt= | no; =sudo apt install= by hand | being tried                        |
+| =discarded.txt=  | no                             | tried and dropped, with the reason |
+=debian/common/= goes on every card; =debian/sway/= or =debian/console/=
+adds the desktop. A program moves from =under_test.txt= to =tested.txt=
+(or =packages.txt=) once it works well, or to =discarded.txt= with the
+reason. The cards install without Recommends: a program that needs one of
+its Recommends gets it listed next to it.
+
+To add another desktop, copy =debian/sway/= to =debian/<NAME>/= and
+change its lists, =setup.sh= (run inside the new system after
+=debian/common/setup.sh=) and =config/= (the user's =~/.config=).
+
+* On the tablet
+- A Wi-Fi network later (or another one): =<SSID>= is the network's name;
+  it asks for the password.
+  #+begin_example
+  wpa_passphrase <SSID> | grep -v '#' | sudo tee -a /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
+  sudo systemctl restart wpa_supplicant@wlan0
+  #+end_example
+- The sway card starts sway after the login on the tablet's screen (tty1)
+  after a 3 s countdown; a key during it, or a file =~/.no-sway=, keeps
+  the text console. Other consoles (Ctrl+Alt+F2 ... F6) and SSH logins
+  stay text.
+- Cameras: =cam-snap= (also =rear-snap=, =front-snap=) takes a PNG photo;
+  =set-camera rear|front= and =set-usb-role normal|host= choose the
+  device tree for the next boot.
 
 * Repository map
 | Path             | What                                         |
@@ -104,6 +158,7 @@ Next steps, being added: Debian, and writing the card.
 | =kernel/=         | kernel configuration, Wi-Fi driver fix       |
 | =u-boot/=         | boot loader configuration and FIT layout     |
 | =initramfs/=      | the start-up system's script (=init=)        |
+| =debian/=         | package lists and settings, per desktop      |
 | =tools/=          | scripts run on =pc_linux=                    |
 | =build/=          | made by the scripts, never committed         |
 

@@ -1,0 +1,3 @@
+# debian/common/discarded.txt - programs tried on the tablet and dropped,
+# with the reason, so nobody has to try them again.
+# Format: <PACKAGE>  # <date>: <reason>

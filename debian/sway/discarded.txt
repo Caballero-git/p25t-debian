@@ -1,0 +1,4 @@
+# debian/sway/discarded.txt - programs tried under sway and dropped, with
+# the reason, so nobody has to try them again.
+# Format: <PACKAGE>  # <date>: <reason>
+brightnessctl  # 2026-10-15: not needed - brightness.sh sets the backlight through logind

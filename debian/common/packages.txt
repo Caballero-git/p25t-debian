@@ -1,0 +1,74 @@
+# debian/common/packages.txt - installed on every card, whatever the
+# desktop. Only what is needed and proven on the tablet. One package per
+# line; "#" starts a comment. Installed without Recommends.
+#
+# Base system (the tablet's first card, 2026-09-25)
+systemd-sysv
+udev
+dbus
+dbus-user-session
+libpam-systemd
+systemd-resolved
+systemd-timesyncd
+kmod
+sudo
+locales
+tzdata
+console-setup
+console-data
+kbd
+apt-utils
+debian-archive-keyring
+ca-certificates
+# ping as a normal user: since trixie ping has no raw-socket capability
+# and relies on net.ipv4.ping_group_range, set by this package
+linux-sysctl-defaults
+# polkit: iio-sensor-proxy (screen rotation) and hostnamed ask it
+polkitd
+# Network: Wi-Fi, SSH, names on the local network (<host>.local)
+wpasupplicant
+iw
+wireless-regdb
+iproute2
+iputils-ping
+openssh-server
+avahi-daemon
+libnss-mdns
+curl
+wget
+# Bluetooth, sound, volume keys
+bluez
+alsa-utils
+triggerhappy
+# Cameras: cam-snap (v4l-utils; raw2png.py needs numpy)
+v4l-utils
+python3
+python3-numpy
+# Hardware checks
+i2c-tools
+usbutils
+evtest
+fbset
+# Files and disks
+e2fsprogs
+dosfstools
+fdisk
+parted
+rsync
+file
+unzip
+util-linux-extra
+# Shell
+bash-completion
+less
+nano
+vim-tiny
+micro
+mc
+htop
+procps
+psmisc
+man-db
+manpages
+# console font (Terminus)
+fonts-terminus

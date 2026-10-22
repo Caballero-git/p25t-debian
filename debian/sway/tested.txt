@@ -1,0 +1,3 @@
+# debian/sway/tested.txt - optional programs for the sway desktop, proven
+# to work on the tablet. tools/build_debian.sh asks whether to install
+# them too. Move a line to packages.txt to make it part of every sway card.

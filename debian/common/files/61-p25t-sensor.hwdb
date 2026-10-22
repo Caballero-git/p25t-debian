@@ -1,0 +1,20 @@
+# Teclast P25T: accelerometer mount matrix for iio-sensor-proxy.
+#
+# systemd's 60-sensor.hwdb has an entry for the PineTab2 that matches
+# every devicetree SC7A20 ("of:NaccelerometerT_null_Csilan,sc7a20"), so
+# the P25T got the PineTab2 matrix. iio-sensor-proxy prefers this udev
+# property over the kernel's mount_matrix, and with the PineTab2 matrix
+# landscape (as the console reads) came out as left-up: 90 degrees off.
+#
+# This file sorts after 60-sensor.hwdb, so its value wins for the same
+# match. Measured 2026-10-15 (tools/accel_probe.sh), in iio-sensor-proxy's
+# convention (the axis pointing up reads -1 g):
+#   landscape as the console reads -> normal
+#   turned 90 degrees clockwise    -> left-up
+#   upside down                    -> bottom-up
+#   turned 270 degrees clockwise   -> right-up
+# It is the kernel's mount_matrix (patch 0026) with every sign flipped.
+# After changing it: sudo systemd-hwdb update, then reboot.
+
+sensor:modalias:of:NaccelerometerT_null_Csilan,sc7a20:*
+ ACCEL_MOUNT_MATRIX=1, 0, 0; 0, 0, 1; 0, -1, 0

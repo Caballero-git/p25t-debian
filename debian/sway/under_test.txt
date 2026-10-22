@@ -1,0 +1,37 @@
+# debian/sway/under_test.txt - programs being tried under sway, not
+# installed by the build. Try one with: sudo apt install <PACKAGE>
+# When it works well: move it to tested.txt (or packages.txt). When it
+# does not: move it to discarded.txt with the reason.
+#
+# Web browsers
+firefox-esr
+epiphany-browser
+qutebrowser
+# Qt 6 programs under sway need these (Recommends of libqt6gui6, not
+# installed by default): without qt6-wayland no Qt 6 program starts
+qt6-wayland
+qt6-svg-plugins
+# SVG icons for GTK programs
+librsvg2-common
+# fonts for web pages
+fonts-liberation2
+# PDF reader (config in ~/.config/zathura is already there)
+zathura
+zathura-pdf-poppler
+# Music and video
+audacious
+mpv
+# Databases
+sqlitebrowser
+# Touch: on-screen keyboard, edge gestures (not set up yet)
+wvkbd
+lisgd
+# Screenshots and clipboard
+grim
+slurp
+wl-clipboard
+# GPU check and benchmark
+mesa-utils
+glmark2-es2-wayland
+# Input debugging (libinput debug-events)
+libinput-tools

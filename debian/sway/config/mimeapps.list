@@ -1,0 +1,16 @@
+# P25T default programs per file type - repo: debian/sway/config/mimeapps.list
+# Installed as ~/.config/mimeapps.list by the card build (debian/sway/setup.sh).
+# Used by xdg-open (and by programs that open files or links). Without a
+# desktop environment there is no other source for these defaults on
+# this card (no mimeinfo.cache: desktop-file-utils is not installed), so
+# xdg-open fell back to looking for a text web browser (2026-10-15).
+# Only programs of debian/sway/packages.txt are listed here; add a line
+# when a program moves there from under_test.txt (e.g. a PDF reader or a
+# web browser).
+[Default Applications]
+image/png=imv.desktop
+image/jpeg=imv.desktop
+image/gif=imv.desktop
+image/webp=imv.desktop
+image/bmp=imv.desktop
+image/tiff=imv.desktop

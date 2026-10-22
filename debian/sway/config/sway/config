@@ -1,0 +1,58 @@
+# P25T sway config, first version - repo: debian/sway/config/sway/config
+# Installed as ~/.config/sway/config by the card build (debian/sway/setup.sh).
+#
+# It loads Debian's default config (/etc/sway/config: key bindings, bar,
+# Super+Enter = foot) and only adds what the P25T needs on top. The panel
+# rotation needs no line here: sway applies the DT panel orientation by
+# itself (transform 90, checked 2026-10-15).
+
+# Terminus 18 px (pango counts in points at 96 dpi: 13.5 pt = 18 px).
+# One size below the console's 20 px: tabbed windows are narrower and 20 px
+# left too few characters per line (chosen 2026-10-15). The bar uses this
+# font too.
+font pango:Terminus 13.5
+
+include /etc/sway/config
+
+# Keyboard: the same layouts and options as the text console. The card
+# build writes ~/.config/sway/keyboard from /etc/default/keyboard (the
+# answers given when the card was built); edit either to change them.
+include ~/.config/sway/keyboard
+
+# Touch follows the panel and its rotation
+input type:touch map_to_output DSI-1
+
+# Every window full screen with a tab bar: easier on a 10" screen and by
+# finger than side-by-side tiling. Super+e switches back to tiling.
+workspace_layout tabbed
+
+# Launcher: fuzzel. Debian's default ($menu = wmenu-run) is not installed
+# on this card (no Recommends).
+bindsym --no-warn $mod+d exec fuzzel
+
+# Auto-rotation from the accelerometer. exec_always runs
+# it again on every reload; the script stops its older copy itself.
+exec_always ~/.config/sway/autorotate.sh run
+# Super+o: lock / unlock the rotation
+bindsym $mod+o exec ~/.config/sway/autorotate.sh toggle
+
+# Bar text: keyboard, rotation lock, backlight, volume,
+# Wi-Fi, battery, date. bar-0 is the bar of Debian's default config.
+bar bar-0 status_command ~/.config/sway/status.sh
+
+# Brightness: 80 at start (as on the console), 5 % steps,
+# never below 5 %. The keyboard's own brightness keys work too, if it has
+# them (--no-warn: Debian's default binds them to brightnessctl).
+exec ~/.config/sway/brightness.sh set 80
+bindsym $mod+F5 exec ~/.config/sway/brightness.sh down
+bindsym $mod+F6 exec ~/.config/sway/brightness.sh up
+bindsym --no-warn --locked XF86MonBrightnessDown exec ~/.config/sway/brightness.sh down
+bindsym --no-warn --locked XF86MonBrightnessUp exec ~/.config/sway/brightness.sh up
+
+# Power key and idle. Short press: screen off / on.
+# Idle 3 min: dim; idle 5 min: screen off; any key or touch undoes both.
+# systemd-inhibit keeps logind from powering off on the power key for as
+# long as swayidle runs (swayidle ends with sway). These lines use exec:
+# they start with sway, not on a reload.
+bindsym XF86PowerOff exec ~/.config/sway/powerkey.sh press
+exec systemd-inhibit --what=handle-power-key --who=sway --why="the power key turns the screen off and on" --mode=block swayidle -w timeout 180 '~/.config/sway/brightness.sh dim' resume '~/.config/sway/brightness.sh undim' timeout 300 '~/.config/sway/powerkey.sh idle-off' resume '~/.config/sway/powerkey.sh wake'

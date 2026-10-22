@@ -1,0 +1,82 @@
+state.RK817 {
+	control.1 {
+		iface CARD
+		name 'Headphones Jack'
+		value false
+		comment {
+			access read
+			type BOOLEAN
+			count 1
+		}
+	}
+	control.2 {
+		iface MIXER
+		name 'Master Playback Volume'
+		value.0 216
+		value.1 216
+		comment {
+			access 'read write'
+			type INTEGER
+			count 2
+			range '0 - 255'
+			dbmin -9500
+			dbmax 0
+			dbvalue.0 -1453
+			dbvalue.1 -1453
+		}
+	}
+	control.3 {
+		iface MIXER
+		name 'Master Capture Volume'
+		value.0 216
+		value.1 216
+		comment {
+			access 'read write'
+			type INTEGER
+			count 2
+			range '0 - 255'
+			dbmin -9500
+			dbmax 0
+			dbvalue.0 -1453
+			dbvalue.1 -1453
+		}
+	}
+	control.4 {
+		iface MIXER
+		name 'Mic Capture Gain'
+		value.0 6
+		value.1 6
+		comment {
+			access 'read write'
+			type INTEGER
+			count 2
+			range '0 - 15'
+			dbmin -1800
+			dbmax 2700
+			dbvalue.0 0
+			dbvalue.1 0
+		}
+	}
+	control.5 {
+		iface MIXER
+		name 'Internal Speakers Switch'
+		value true
+		comment {
+			access 'read write'
+			type BOOLEAN
+			count 1
+		}
+	}
+	control.6 {
+		iface MIXER
+		name 'Playback Mux'
+		value HP
+		comment {
+			access 'read write'
+			type ENUMERATED
+			count 1
+			item.0 HP
+			item.1 SPK
+		}
+	}
+}
