@@ -22,11 +22,12 @@ alone.
 - A USB card reader.
 - A PC (called =pc_linux= here): x86-64, a Debian-family Linux (Debian,
   Ubuntu, Linux Mint), =sudo= rights, internet access, and free disk
-  space (so far: 2 GB for the kernel source and 1 GB for the kernel
-  build; the total is measured as the steps are added).
+  space (so far 3.6 GB: 2 GB for the kernel source, 1 GB for the kernel
+  build, 0.5 GB for the boot loader; the total is measured as the steps
+  are added).
 - Packages, so far (one line):
   #+begin_example
-  sudo apt install git build-essential gcc-aarch64-linux-gnu bc bison flex libssl-dev libelf-dev kmod cpio patch
+  sudo apt install git build-essential gcc-aarch64-linux-gnu bc bison flex libssl-dev libelf-dev kmod cpio patch swig python3-dev python3-setuptools libgnutls28-dev uuid-dev curl bzip2
   #+end_example
 
 * Building a card
@@ -73,14 +74,36 @@ script explains itself in its header.
      modules and the Wi-Fi firmware, with checksums, into
      =build/kernel-pack/= for the card.
 
-Next steps, being added: the boot loader and the start-up system,
-Debian, and writing the card.
+3. Boot loader and start-up system (about a minute each, plus the
+   downloads the first time):
+   #+begin_example
+   bash <WORK>/p25t-debian/tools/build_uboot.sh
+   bash <WORK>/p25t-debian/tools/build_initramfs.sh
+   #+end_example
+   - =build_uboot.sh= builds mainline U-Boot (tag =v2026.10-rc5=) and
+     puts it with Rockchip's BL31 (=rk3568_bl31_v1.46.elf=, checked by
+     its sha256, never stored here) into =build/u-boot/uboot.itb=: the
+     file the tablet's own first-stage loader reads from the card. The
+     tablet's loader in its internal memory is never changed.
+   - =build_initramfs.sh= builds the start-up system ("stage 1"): a static
+     busybox and =initramfs/init=, in =build/stage1/initramfs.cpio.gz=.
+     At every boot it writes a log onto the card and hands over to
+     Debian; holding a volume key at power-on keeps it in stage 1 instead,
+     a rescue system with a shell on the USB-C port.
+   - Both builds are reproducible: with the same compiler (the author
+     uses Ubuntu 24.04's) every PC gets the same files, and each script
+     says whether its result is identical to the author's. Another
+     compiler version gives other checksums, which is no error.
+
+Next steps, being added: Debian, and writing the card.
 
 * Repository map
 | Path             | What                                         |
 |------------------+----------------------------------------------|
 | =kernel/patches/= | the 30 P25T patches for Linux 7.3            |
 | =kernel/=         | kernel configuration, Wi-Fi driver fix       |
+| =u-boot/=         | boot loader configuration and FIT layout     |
+| =initramfs/=      | the start-up system's script (=init=)        |
 | =tools/=          | scripts run on =pc_linux=                    |
 | =build/=          | made by the scripts, never committed         |
 

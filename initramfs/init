@@ -1,0 +1,214 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Teclast P25T stage-1 initramfs: logging to the SD card + USB gadget console.
+# Never touches the eMMC.
+
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+mkdir -p /dev/pts /boot /tmp /sys/kernel/config
+mount -t devpts devpts /dev/pts
+mount -t configfs configfs /sys/kernel/config
+mount -t tmpfs tmpfs /tmp
+
+log() { echo "[init] $*" > /dev/kmsg; }
+log "P25T stage-1 initramfs starting"
+
+# --- 1. Find and mount the SD card's boot partition (FAT, label P25TBOOT) ---
+BOOTDEV=""
+for i in $(seq 1 30); do
+    BOOTDEV=$(findfs LABEL=P25TBOOT 2>/dev/null)
+    [ -n "$BOOTDEV" ] && break
+    sleep 1
+done
+if [ -n "$BOOTDEV" ]; then
+    mount -t vfat -o rw,flush "$BOOTDEV" /boot && log "mounted $BOOTDEV on /boot"
+else
+    log "P25TBOOT partition not found"
+fi
+
+LOGDIR=/boot/logs
+mkdir -p "$LOGDIR"
+N=1
+[ -f "$LOGDIR/bootcount" ] && N=$(( $(cat "$LOGDIR/bootcount") + 1 ))
+echo "$N" > "$LOGDIR/bootcount"
+PREFIX="$LOGDIR/boot-$N"
+sync
+
+snapshot() {
+    dmesg > "$PREFIX-dmesg.txt" 2>&1
+    {
+        echo "=== uptime"; cat /proc/uptime
+        echo "=== cmdline"; cat /proc/cmdline
+        echo "=== meminfo"; head -5 /proc/meminfo
+        echo "=== cpuinfo"; grep -E "processor|CPU part|BogoMIPS" /proc/cpuinfo
+        echo "=== udc"; ls /sys/class/udc 2>&1
+        for u in /sys/class/udc/*; do echo "$u state: $(cat "$u/state" 2>&1)"; done
+        echo "=== block"; cat /proc/partitions
+        echo "=== input"; cat /proc/bus/input/devices 2>&1
+        echo "=== iio"; for d in /sys/bus/iio/devices/iio:device*; do
+            echo "$d $(cat "$d/name" 2>/dev/null)"
+            cat "$d/in_voltage0_raw" 2>/dev/null
+        done
+        echo "=== net"; ip addr 2>&1
+        echo "=== thermal"; cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null
+        echo "=== drm"; for c in /sys/class/drm/card*-*; do
+            echo "$c status=$(cat "$c/status" 2>/dev/null) enabled=$(cat "$c/enabled" 2>/dev/null)"
+            cat "$c/modes" 2>/dev/null
+        done
+        echo "=== fb"; cat /proc/fb 2>/dev/null
+        echo "=== backlight"; for b in /sys/class/backlight/*; do
+            echo "$b brightness=$(cat "$b/brightness") actual=$(cat "$b/actual_brightness") max=$(cat "$b/max_brightness") power=$(cat "$b/bl_power")"
+        done
+        echo "=== regulators"; for r in /sys/class/regulator/regulator.*; do
+            echo "$(cat "$r/name" 2>/dev/null) state=$(cat "$r/state" 2>/dev/null)"
+        done
+    } > "$PREFIX-status.txt" 2>&1
+    sync
+}
+snapshot
+log "first snapshot written to $PREFIX-*"
+
+# --- Stage 3: hand over to Debian (ext4 partition labelled p25troot) ---
+# Only if /boot/boot-debian exists on the card. Holding a volume key while
+# powering on keeps this stage-1 system instead (SARADC idle = 1023).
+# The keys' ADC is found by its name (fe720000.saradc), not by its number:
+# since the accelerometer was added (2026-09-26) it is iio:device1, and
+# reading iio:device0 made this check fail on every boot.
+handover() {
+    H="$PREFIX-handover.txt"
+    KEY=""; ADC=""
+    for d in /sys/bus/iio/devices/iio:device*; do
+        case "$(cat "$d/name" 2>/dev/null)" in
+            *saradc) ADC=$d; KEY=$(cat "$d/in_voltage0_raw" 2>/dev/null); break ;;
+        esac
+    done
+    echo "volume key ADC (${ADC:-no saradc device}): ${KEY:-unreadable}" > "$H"
+    if [ -n "$KEY" ] && [ "$KEY" -lt 900 ]; then
+        echo "volume key held: staying in stage 1" >> "$H"; sync; return
+    fi
+    ROOTDEV=""
+    for i in $(seq 1 10); do
+        ROOTDEV=$(findfs LABEL=p25troot 2>/dev/null)
+        [ -n "$ROOTDEV" ] && break
+        sleep 1
+    done
+    echo "root device: ${ROOTDEV:-not found}" >> "$H"
+    [ -n "$ROOTDEV" ] || { sync; return; }
+    mkdir -p /newroot
+    if ! mount -t ext4 -o ro "$ROOTDEV" /newroot >> "$H" 2>&1; then
+        echo "mount failed" >> "$H"; sync; return
+    fi
+    if [ ! -e /newroot/sbin/init ]; then
+        echo "no /sbin/init on the root partition" >> "$H"
+        umount /newroot; sync; return
+    fi
+    echo "switching to Debian at $(cut -d' ' -f1 /proc/uptime) s" >> "$H"
+    log "handing over to Debian on $ROOTDEV"
+    sync
+    umount /boot
+    umount /sys/kernel/config /dev/pts /tmp 2>/dev/null
+    mount --move /dev /newroot/dev
+    mount --move /proc /newroot/proc
+    mount --move /sys /newroot/sys
+    exec switch_root /newroot /sbin/init
+}
+[ -f /boot/boot-debian ] && handover
+
+# Read-only register dumps of the PMIC (RK817 @0x20) and CPU regulator (SYR837 @0x40)
+{
+    echo "=== i2cdetect bus 0 (read-only probe)"; i2cdetect -y -r 0 2>&1
+    echo "=== RK817 @0x20"; i2cdump -y 0 0x20 b 2>&1
+    echo "=== SYR837 @0x40"; i2cdump -y -r 0x00-0x05 0 0x40 b 2>&1
+} > "$PREFIX-pmic.txt" 2>&1
+sync
+
+# Read-only: GPIO pad levels (EXT_PORT) of all banks and the IO-domain voltage selects.
+# LCD enable = GPIO3_B1 (bit 9), LCD reset = GPIO3_C3 (bit 19). A pad whose IO domain is
+# unpowered reads 0 even while its output register says 1.
+{
+    for b in 0:0xfdd60000 1:0xfe740000 2:0xfe750000 3:0xfe760000 4:0xfe770000; do
+        n=${b%%:*}; a=${b#*:}
+        echo "gpio$n DR_L=$(devmem $((a + 0x00)) 32) DR_H=$(devmem $((a + 0x04)) 32) DDR_L=$(devmem $((a + 0x08)) 32) DDR_H=$(devmem $((a + 0x0c)) 32) EXT_PORT=$(devmem $((a + 0x70)) 32)"
+    done
+    echo "PMU_GRF IO_VSEL0=$(devmem 0xfdc20140 32) IO_VSEL1=$(devmem 0xfdc20144 32) IO_VSEL2=$(devmem 0xfdc20148 32)"
+    echo "PMU_GRF IO_VSEL_raw: $(for o in 0x140 0x144 0x148 0x14c 0x150; do printf '%s=%s ' $o $(devmem $((0xfdc20000 + o)) 32); done)"
+} > "$PREFIX-gpio.txt" 2>&1
+sync
+
+# Say hello on the tablet's own screen (if the display came up)
+for t in 1 2 3; do
+    printf "\n\n  Linux %s on Teclast P25T\n  boot #%s - USB console: /dev/ttyACM0 on the PC\n\n" "$(uname -r)" "$N" > /dev/tty1 2>/dev/null && break
+    sleep 2
+done
+
+# Optional experiment hook: if /boot/autorun.sh exists on the card, run it in the
+# background with its output in boot-N-autorun.txt. Delete the file to disable it.
+if [ -f /boot/autorun.sh ]; then
+    log "running /boot/autorun.sh"
+    sh /boot/autorun.sh "$PREFIX" > "$PREFIX-autorun.txt" 2>&1 &
+fi
+
+# --- 2. USB gadget: serial console (ACM) + network (NCM) ---
+G=/sys/kernel/config/usb_gadget/p25t
+mkdir -p $G
+echo 0x1d6b > $G/idVendor      # Linux Foundation
+echo 0x0104 > $G/idProduct     # Multifunction Composite Gadget
+echo 0x0100 > $G/bcdDevice
+echo 0x0200 > $G/bcdUSB
+mkdir -p $G/strings/0x409
+echo "p25t0001"          > $G/strings/0x409/serialnumber
+echo "Teclast"           > $G/strings/0x409/manufacturer
+echo "P25T Linux stage1" > $G/strings/0x409/product
+mkdir -p $G/configs/c.1/strings/0x409
+echo "ACM+NCM" > $G/configs/c.1/strings/0x409/configuration
+echo 250 > $G/configs/c.1/MaxPower
+mkdir -p $G/functions/acm.usb0 $G/functions/ncm.usb0
+ln -s $G/functions/acm.usb0 $G/configs/c.1/
+ln -s $G/functions/ncm.usb0 $G/configs/c.1/
+
+UDC=""
+for i in $(seq 1 20); do
+    UDC=$(ls /sys/class/udc 2>/dev/null | head -n 1)
+    [ -n "$UDC" ] && break
+    sleep 1
+done
+if [ -n "$UDC" ]; then
+    # Bind, and retry if the controller did not come up (seen: "failed to enable ep0out")
+    for try in 1 2 3 4 5; do
+        echo "$UDC" > $G/UDC && log "USB gadget bound to $UDC (try $try)"
+        sleep 3
+        ST=$(cat /sys/class/udc/$UDC/state 2>/dev/null)
+        log "UDC state after try $try: $ST"
+        [ "$ST" = "configured" ] && break
+        echo "" > $G/UDC 2>/dev/null
+        sleep 2
+    done
+else
+    log "no UDC found - USB gadget not available"
+fi
+
+sleep 2
+ip link set usb0 up 2>/dev/null
+ip addr add 192.168.7.2/24 dev usb0 2>/dev/null
+telnetd -l /bin/sh 2>/dev/null && log "telnetd on 192.168.7.2"
+
+# Shell on the USB serial port (PC side: /dev/ttyACM0), respawned forever
+(
+    while true; do
+        if [ -e /dev/ttyGS0 ]; then
+            setsid sh -c 'exec sh -i </dev/ttyGS0 >/dev/ttyGS0 2>&1'
+        fi
+        sleep 2
+    done
+) &
+
+# --- 3. Keep logging: every 5 s for 2 min, then every 30 s ---
+i=0
+while true; do
+    snapshot
+    i=$((i + 1))
+    if [ $i -lt 24 ]; then sleep 5; else sleep 30; fi
+done

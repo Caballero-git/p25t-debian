@@ -1,0 +1,95 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/dts-v1/;
+/ {
+	description = "P25T SD Linux boot v3: mainline U-Boot + BL31";
+	#address-cells = <1>;
+	images {
+		uboot {
+			description = "U-Boot";
+			data = /incbin/("u-boot.bin");
+			type = "standalone";
+			arch = "arm64";
+			os = "U-Boot";
+			compression = "none";
+			load = <0x00800000>;
+			hash { algo = "sha256"; };
+		};
+		atf-1 {
+			description = "ARM Trusted Firmware";
+			data = /incbin/("bl31_0x00040000.bin");
+			type = "firmware";
+			arch = "arm64";
+			os = "arm-trusted-firmware";
+			compression = "none";
+			load = <0x00040000>;
+			hash { algo = "sha256"; };
+		};
+		atf-2 {
+			description = "ARM Trusted Firmware";
+			data = /incbin/("bl31_0x0005a000.bin");
+			type = "firmware";
+			arch = "arm64";
+			os = "arm-trusted-firmware";
+			compression = "none";
+			load = <0x0005a000>;
+			hash { algo = "sha256"; };
+		};
+		atf-3 {
+			description = "ARM Trusted Firmware";
+			data = /incbin/("bl31_0x0005c000.bin");
+			type = "firmware";
+			arch = "arm64";
+			os = "arm-trusted-firmware";
+			compression = "none";
+			load = <0x0005c000>;
+			hash { algo = "sha256"; };
+		};
+		atf-4 {
+			description = "ARM Trusted Firmware";
+			data = /incbin/("bl31_0xfdcc1000.bin");
+			type = "firmware";
+			arch = "arm64";
+			os = "arm-trusted-firmware";
+			compression = "none";
+			load = <0xfdcc1000>;
+			hash { algo = "sha256"; };
+		};
+		atf-5 {
+			description = "ARM Trusted Firmware";
+			data = /incbin/("bl31_0xfdcce000.bin");
+			type = "firmware";
+			arch = "arm64";
+			os = "arm-trusted-firmware";
+			compression = "none";
+			load = <0xfdcce000>;
+			hash { algo = "sha256"; };
+		};
+		atf-6 {
+			description = "ARM Trusted Firmware";
+			data = /incbin/("bl31_0xfdcd0000.bin");
+			type = "firmware";
+			arch = "arm64";
+			os = "arm-trusted-firmware";
+			compression = "none";
+			load = <0xfdcd0000>;
+			hash { algo = "sha256"; };
+		};
+		fdt {
+			description = "U-Boot dtb";
+			data = /incbin/("u-boot.dtb");
+			type = "flat_dt";
+			arch = "arm64";
+			compression = "none";
+			hash { algo = "sha256"; };
+		};
+	};
+	configurations {
+		default = "conf";
+		conf {
+			description = "p25t-linuxboot";
+			firmware = "atf-1";
+			loadables = "uboot", "atf-2", "atf-3", "atf-4", "atf-5", "atf-6";
+			fdt = "fdt";
+		};
+	};
+};
