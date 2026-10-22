@@ -1,0 +1,98 @@
+--- a/src/SDIO/driver_fw/driver/aic8800/aic8800_fdrv/rwnx_main.c
++++ b/src/SDIO/driver_fw/driver/aic8800/aic8800_fdrv/rwnx_main.c
+@@ -3246,7 +3246,10 @@
+ 	   spin_unlock_bh(&rwnx_vif->rwnx_hw->cb_lock);
+ 
+        printk("sta %pM found = %d\n", mac, found);
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0)
++       /* 7.3: cfg80211_probe_status() takes a link_id (-1: not an MLO link) */
++       cfg80211_probe_status(rwnx_vif->ndev, mac, (u64)rwnx_vif->sta_probe.probe_id, -1, found, 0, false, GFP_ATOMIC);
++#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
+        if(found)
+                cfg80211_probe_status(rwnx_vif->ndev, mac, (u64)rwnx_vif->sta_probe.probe_id, 1, 0, false, GFP_ATOMIC);
+        else
+@@ -3779,6 +3782,20 @@
+ 
+ }
+ 
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0)
++/*
++ * 7.3: probe_client became probe_peer and cfg80211 now allocates the cookie.
++ * The driver still reports its own probe id; hostapd-style AP use is not our
++ * target on the P25T (station only).
++ */
++static int rwnx_cfg80211_probe_peer(struct wiphy *wiphy, struct net_device *dev,
++			const u8 *peer, u64 cookie)
++{
++	u64 own_cookie;
++	return rwnx_cfg80211_probe_client(wiphy, dev, peer, &own_cookie);
++}
++#endif
++
+ /**
+  * @mgmt_frame_register: Notify driver that a management frame type was
+  *	registered. Note that this callback may not sleep, and cannot run
+@@ -4053,7 +4070,11 @@
+ static int
+ rwnx_cfg80211_remain_on_channel(struct wiphy *wiphy, struct wireless_dev *wdev,
+ 								struct ieee80211_channel *chan,
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0)
++								unsigned int duration, u64 cookie
++#else
+ 								unsigned int duration, u64 *cookie
++#endif
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 2, 0)
+ 								/*
+ 								 * 7.2 added an optional receive address filter for the off-channel
+@@ -4065,7 +4086,13 @@
+ #endif
+ 								)
+ {
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0)
++	/* 7.3: cfg80211 allocates the cookie; the driver keeps its own counter internally */
++	u64 own_cookie;
++	return rwnx_cfg80211_remain_on_channel_(wiphy, wdev, chan, duration, &own_cookie, false);
++#else
+ 	return rwnx_cfg80211_remain_on_channel_(wiphy, wdev, chan, duration, cookie, false);
++#endif
+ }
+ 
+ /**
+@@ -4204,7 +4231,11 @@
+ /**
+  * @mgmt_tx: Transmit a management frame.
+  */
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0))
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0)
++static int rwnx_cfg80211_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
++								 struct cfg80211_mgmt_tx_params *params,
++								 u64 cfg_cookie)
++#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0))
+ static int rwnx_cfg80211_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
+ 								 struct cfg80211_mgmt_tx_params *params,
+ 								 u64 *cookie)
+@@ -4221,6 +4252,11 @@
+ 								 u64 *cookie)
+ #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0) */
+ {
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0)
++	/* 7.3: cfg80211 allocates the cookie; the driver keeps using its own internally */
++	u64 own_cookie = cfg_cookie;
++	u64 *cookie = &own_cookie;
++#endif
+ 	struct rwnx_hw *rwnx_hw = wiphy_priv(wiphy);
+ 	struct rwnx_vif *rwnx_vif = container_of(wdev, struct rwnx_vif, wdev);//netdev_priv(wdev->netdev);
+ 	struct rwnx_sta *rwnx_sta;
+@@ -5511,7 +5547,11 @@
+ 	.change_beacon = rwnx_cfg80211_change_beacon,
+ 	.stop_ap = rwnx_cfg80211_stop_ap,
+ 	.set_monitor_channel = rwnx_cfg80211_set_monitor_channel,
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 3, 0)
++	.probe_peer = rwnx_cfg80211_probe_peer,
++#else
+ 	.probe_client = rwnx_cfg80211_probe_client,
++#endif
+ //	.mgmt_frame_register = rwnx_cfg80211_mgmt_frame_register,
+ 	.set_wiphy_params = rwnx_cfg80211_set_wiphy_params,
+ 	.set_txq_params = rwnx_cfg80211_set_txq_params,

@@ -22,11 +22,11 @@ alone.
 - A USB card reader.
 - A PC (called =pc_linux= here): x86-64, a Debian-family Linux (Debian,
   Ubuntu, Linux Mint), =sudo= rights, internet access, and free disk
-  space (about 2 GB for the kernel source so far; the total is measured
-  as the steps are added).
-- Packages, so far:
+  space (so far: 2 GB for the kernel source and 1 GB for the kernel
+  build; the total is measured as the steps are added).
+- Packages, so far (one line):
   #+begin_example
-  sudo apt install git
+  sudo apt install git build-essential gcc-aarch64-linux-gnu bc bison flex libssl-dev libelf-dev kmod cpio patch
   #+end_example
 
 * Building a card
@@ -52,13 +52,35 @@ script explains itself in its header.
    =kernel/patches/= (see its README). It ends with
    =OK: ... branch p25t = Linux v7.3 + 30 P25T patches=.
 
-Next steps, being added: building the kernel, the boot loader and the
-start-up system, Debian, and writing the card.
+2. Kernel build: the kernel, the Wi-Fi driver, and both collected for
+   the card.
+   #+begin_example
+   bash <WORK>/p25t-debian/tools/build_kernel.sh
+   bash <WORK>/p25t-debian/tools/build_wifi.sh
+   bash <WORK>/p25t-debian/tools/pack_kernel.sh
+   #+end_example
+   - =build_kernel.sh= configures the kernel (=kernel/p25t-base.config=
+     plus =kernel/p25t.fragment=) and compiles it out of the source tree,
+     into =build/kernel/=. It takes long: half an hour on a PC with two
+     cores, more on a slow laptop; if it stops, run it again and it
+     continues. It ends with
+     =OK: kernel 7.3.0-p25t built=.
+   - =build_wifi.sh= builds the tablet's Wi-Fi driver (AIC8800, not part
+     of mainline Linux) from github.com/radxa-pkg/aic8800 at a fixed
+     commit, checked against the source of the driver that runs on the
+     tablet. About a minute. Run it again after every =build_kernel.sh=.
+   - =pack_kernel.sh= collects the kernel, its four device trees, the
+     modules and the Wi-Fi firmware, with checksums, into
+     =build/kernel-pack/= for the card.
+
+Next steps, being added: the boot loader and the start-up system,
+Debian, and writing the card.
 
 * Repository map
 | Path             | What                                         |
 |------------------+----------------------------------------------|
 | =kernel/patches/= | the 30 P25T patches for Linux 7.3            |
+| =kernel/=         | kernel configuration, Wi-Fi driver fix       |
 | =tools/=          | scripts run on =pc_linux=                    |
 | =build/=          | made by the scripts, never committed         |
 

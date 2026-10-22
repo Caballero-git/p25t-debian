@@ -1,0 +1,19 @@
+# Options added to kernel/p25t-base.config (the configuration the tablet's
+# first card was built with, Linux 7.3-rc4) for the cards made here.
+# tools/build_kernel.sh merges this file in and checks that every line
+# survives in the final configuration.
+#
+# Kernel release name: 7.3.0-p25t
+CONFIG_LOCALVERSION="-p25t"
+# Virtual input devices (input remappers, touch/keyboard helpers)
+CONFIG_INPUT_UINPUT=y
+# dma-buf from memfd: libcamera's software ISP
+CONFIG_UDMABUF=y
+# Compressed swap in RAM instead of on the SD card
+CONFIG_ZRAM=m
+CONFIG_ZRAM_BACKEND_ZSTD=y
+CONFIG_ZRAM_DEF_COMP_ZSTD=y
+# USB headsets / sound cards
+CONFIG_SND_USB_AUDIO=m
+# Front camera GalaxyCore GC02M2 (patch 0029; device trees in 0030)
+CONFIG_VIDEO_GC02M2=y
