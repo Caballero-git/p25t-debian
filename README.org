@@ -24,9 +24,9 @@ alone.
   Ubuntu, Linux Mint), =sudo= rights, internet access, and free disk
   space: about 3.6 GB for steps 1-3 (2 GB kernel source, 1 GB kernel
   build, 0.5 GB boot loader) and 6 GB free for step 4 (Debian).
-- Packages, so far (one line):
+- Packages (one line):
   #+begin_example
-  sudo apt install git build-essential gcc-aarch64-linux-gnu bc bison flex libssl-dev libelf-dev kmod cpio patch swig python3-dev python3-setuptools libgnutls28-dev uuid-dev curl bzip2 mmdebstrap qemu-user-static binfmt-support debian-archive-keyring gpg
+  sudo apt install git build-essential gcc-aarch64-linux-gnu bc bison flex libssl-dev libelf-dev kmod cpio patch swig python3-dev python3-setuptools libgnutls28-dev uuid-dev curl bzip2 mmdebstrap qemu-user-static binfmt-support debian-archive-keyring gpg gdisk dosfstools parted rsync
   #+end_example
 
 * Building a card
@@ -116,7 +116,51 @@ script explains itself in its header.
    system (as hashes), never in a file of the build. To build again,
    remove the old folder first (the script says how).
 
-Next step, being added: writing the card.
+5. The card's boot part. Put only the new card into the reader and find
+   its name with =lsblk= (a whole disk such as =/dev/sdb= or
+   =/dev/mmcblk0=, about the card's size; written =<DEVICE>= below).
+   #+begin_example
+   bash <WORK>/p25t-debian/tools/make_boot_part.sh image
+   bash <WORK>/p25t-debian/tools/make_boot_part.sh write <DEVICE>
+   #+end_example
+   =image= makes the boot part as a file (partition table, U-Boot three
+   times, an empty partition =P25TBOOT=); =write= asks for =sudo=, shows
+   the card and ERASES it after you type =YES=, writes the boot part and
+   reads it back to compare. It refuses the PC's own disks, anything that
+   is not a removable, USB or SD disk of 4-255 GB, and a card that already
+   carries a P25T system; to reuse such a card add =--erase-p25t-card=
+   (it asks a second time).
+6. Debian, kernel and start-up system onto the card (a few minutes):
+   #+begin_example
+   bash <WORK>/p25t-debian/tools/install_card.sh sway
+   #+end_example
+   (the same desktop name as in step 4). It finds the card by its
+   =P25TBOOT= partition (only one P25T card may be in the PC), asks for
+   =YES=, makes the root partition from 1 GiB to the end, copies Debian
+   and checks every file, and puts the kernel, its four device trees and
+   the initramfs on =P25TBOOT= with a checksum list (=CARD-SHA256SUMS=).
+   It ends with =OK: the card is ready=. If the PC's file manager opens
+   the card's partitions, eject them there before taking the card out.
+7. Plug a keyboard into the tablet's USB-C port (a USB-C keyboard, or a
+   USB keyboard through an adapter or hub), put the card into the tablet
+   (switched off) and power it on. After about 20 s the login prompt
+   appears on the screen; on a sway card, sway starts after the login.
+   The internal Android is untouched: without the card the tablet starts
+   it as before.
+   - The card starts with USB-C as a host (for the keyboard). It does
+     not charge in that mode. =set-usb-role normal= switches to USB-C as
+     a device from the next boot on: charging, and a serial console and
+     network for a PC over the cable; =set-usb-role host= switches back.
+   - Logins: the user and password of step 4 on the screen, or over SSH
+     as =<USER>@<HOST>.local= when the tablet is on Wi-Fi (in normal
+     mode also at =192.168.7.2= over the USB-C cable).
+   - A Bluetooth keyboard: pair it once with =bluetoothctl= (=scan on=,
+     =pair <ADDRESS>=, =trust <ADDRESS>=, =connect <ADDRESS>=).
+   - Every boot writes a log onto the card (=P25TBOOT/logs/=, readable on
+     the PC).
+
+Being added: what to check after the first boot, and what to do if the
+tablet does not start.
 
 * Programs
 Each folder of =debian/= has four lists, one package per line:

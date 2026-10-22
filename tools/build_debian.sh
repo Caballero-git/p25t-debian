@@ -56,6 +56,11 @@ if [ "$(id -u)" -ne 0 ]; then
     exec sudo bash "$0" "$@"
 fi
 [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ] || die "run it as your normal user (it asks for sudo itself)"
+# The PC's own language settings would follow into the new system's
+# commands (sudo keeps LANG, LC_*, LANGUAGE): any language the new system
+# has not generated makes perl and apt warn ("Setting locale failed").
+# C.UTF-8 is built in everywhere.
+unset LANGUAGE; export LC_ALL=C.UTF-8
 PCUSER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
 R="$REPO/build/rootfs-$DESKTOP"
 LOG="$REPO/build/rootfs-$DESKTOP-build-log.txt"
