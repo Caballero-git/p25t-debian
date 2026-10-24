@@ -155,7 +155,7 @@ for d in $DTBS; do cp "$KP/$d.dtb" "$MNT/$d.dtb"; done
 cp "$KP/rk3566-teclast-p25t.dtb" "$MNT/rk3566-teclast-p25t-normal.dtb"
 # The first boot uses USB-C as a host, so a keyboard on the USB-C port
 # works for the first login (and for pairing a Bluetooth keyboard).
-# set-usb-role normal switches to USB-C as a device (console and network
+# set-dtb device switches to USB-C as a device (console and network
 # for a PC over the cable) from the next boot on.
 cp "$KP/rk3566-teclast-p25t-usbhost.dtb" "$MNT/rk3566-teclast-p25t.dtb"
 cp "$INITD/initramfs.cpio.gz" "$MNT/initramfs.cpio.gz"

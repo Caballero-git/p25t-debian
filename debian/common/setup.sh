@@ -99,7 +99,7 @@ cat > /usr/local/sbin/p25t-gadget <<'EOT'
 #!/bin/sh
 # Set up the USB-C port as a composite USB device: serial console + network.
 G=/sys/kernel/config/usb_gadget/p25t
-# Host mode (set-usb-role host): the port is a USB host, there is no
+# Host mode (set-dtb host): the port is a USB host, there is no
 # device controller (UDC); nothing to do.
 M=$(tr -d '\0' < /proc/device-tree/usb@fcc00000/dr_mode 2>/dev/null)
 [ "$M" = host ] && { echo "USB-C port in host mode: no gadget"; exit 0; }
@@ -279,10 +279,9 @@ cat > /etc/udev/rules.d/99-p25t-vicap.rules <<'EOT'
 ACTION=="add", SUBSYSTEM=="platform", KERNEL=="fdfe0000.video-capture", ATTR{power/control}="on"
 EOT
 
-echo "--- device tree for the next boot: set-dtb, set-camera, set-usb-role"
+echo "--- device tree for the next boot: set-dtb (also called set-role)"
 install -m 755 "$F/set-dtb.sh" /usr/local/bin/set-dtb
-ln -sf set-dtb /usr/local/bin/set-usb-role
-ln -sf set-dtb /usr/local/bin/set-camera
+ln -sf set-dtb /usr/local/bin/set-role
 
 echo "--- accelerometer: the P25T mount matrix for iio-sensor-proxy"
 # systemd's 60-sensor.hwdb gives every devicetree SC7A20 the PineTab2

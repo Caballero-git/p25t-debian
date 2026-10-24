@@ -1,74 +1,70 @@
 # debian/common/packages.txt - installed on every card, whatever the
 # desktop. Only what is needed and proven on the tablet. One package per
-# line; "#" starts a comment. Installed without Recommends.
+# line, then "#" and what it is. Installed without Recommends.
 #
-# Base system (the tablet's first card, 2026-09-25)
-systemd-sysv
-udev
-dbus
-dbus-user-session
-libpam-systemd
-systemd-resolved
-systemd-timesyncd
-kmod
-sudo
-locales
-tzdata
-console-setup
-console-data
-kbd
-apt-utils
-debian-archive-keyring
-ca-certificates
-# ping as a normal user: since trixie ping has no raw-socket capability
-# and relies on net.ipv4.ping_group_range, set by this package
-linux-sysctl-defaults
-# polkit: iio-sensor-proxy (screen rotation) and hostnamed ask it
-polkitd
-# Network: Wi-Fi, SSH, names on the local network (<host>.local)
-wpasupplicant
-iw
-wireless-regdb
-iproute2
-iputils-ping
-openssh-server
-avahi-daemon
-libnss-mdns
-curl
-wget
+# Base system
+systemd-sysv            # systemd as the init system
+udev                    # device manager
+dbus                    # system message bus
+dbus-user-session       # message bus for the user's session
+libpam-systemd          # login sessions (logind) - needed by sway
+systemd-resolved        # name resolution (DNS)
+systemd-timesyncd       # clock from the network
+kmod                    # load kernel modules
+sudo                    # run commands as root
+locales                 # languages
+tzdata                  # time zones
+console-setup           # console font and keyboard
+console-data            # console keyboard maps
+kbd                     # console tools (setfont, setvtrgb, ...)
+apt-utils               # package tools
+debian-archive-keyring  # Debian's signing keys
+ca-certificates         # certificates for https
+linux-sysctl-defaults   # lets normal users ping
+polkitd                 # permissions for system services (rotation, host name)
+# Network
+wpasupplicant           # Wi-Fi login
+iw                      # Wi-Fi information
+wireless-regdb          # Wi-Fi channels allowed per country
+iproute2                # ip: network addresses and routes
+iputils-ping            # ping
+openssh-server          # log in from another computer (ssh)
+avahi-daemon            # <host>.local names on the local network
+libnss-mdns             # find other computers' .local names
+curl                    # download from the web
+wget                    # download from the web
 # Bluetooth, sound, volume keys
-bluez
-alsa-utils
-triggerhappy
-# Cameras: cam-snap (v4l-utils; raw2png.py needs numpy)
-v4l-utils
-python3
-python3-numpy
+bluez                   # Bluetooth (bluetoothctl)
+alsa-utils              # sound tools (alsamixer, aplay, amixer)
+triggerhappy            # volume keys and headphone jack
+# Cameras
+v4l-utils               # camera tools (v4l2-ctl, media-ctl) - used by cam-snap
+python3                 # Python - used by cam-snap's raw2png.py
+python3-numpy           # numbers in Python - used by raw2png.py
 # Hardware checks
-i2c-tools
-usbutils
-evtest
-fbset
+i2c-tools               # read chips on the I2C buses
+usbutils                # lsusb
+evtest                  # show input events (keys, touch)
+fbset                   # framebuffer information
 # Files and disks
-e2fsprogs
-dosfstools
-fdisk
-parted
-rsync
-file
-unzip
-util-linux-extra
+e2fsprogs               # ext4 tools
+dosfstools              # FAT tools
+fdisk                   # partition tool
+parted                  # partition tool
+rsync                   # copy and synchronise files
+file                    # tell a file's type
+unzip                   # unpack .zip files
+util-linux-extra        # more system tools (hwclock, ...)
 # Shell
-bash-completion
-less
-nano
-vim-tiny
-micro
-mc
-htop
-procps
-psmisc
-man-db
-manpages
-# console font (Terminus)
-fonts-terminus
+bash-completion         # Tab completion in bash
+less                    # page through text
+nano                    # simple text editor
+vim-tiny                # vi text editor
+micro                   # text editor with familiar keys (Ctrl+S, Ctrl+Q)
+mc                      # Midnight Commander, file manager in the console
+htop                    # running programs, CPU and memory
+procps                  # ps, top, free
+psmisc                  # killall, pstree
+man-db                  # manual pages (man)
+manpages                # the system's manual pages
+fonts-terminus          # Terminus font

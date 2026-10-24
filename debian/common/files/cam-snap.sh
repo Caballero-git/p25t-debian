@@ -11,7 +11,7 @@
 #         e.g. photo_{now}.png -> photo_20261021-191530.png.
 #         Default: photo_{now}.png in the current folder.
 #   -c    camera; default: the one the active device tree wires up (the SoC
-#         has one camera input: set-camera switches, then reboot)
+#         has one camera input: set-dtb rear|front switches, then reboot)
 #   -e    exposure in lines. rear: 4..1992 (default 1992, the longest at
 #         1296x972). front: 4..16367 (default 1252, the longest at the
 #         normal frame rate; longer values slow the frames down)
@@ -92,7 +92,7 @@ ACTIVE=""
 [ -e /sys/bus/i2c/drivers/gc02m2/2-0010 ] && ACTIVE=front
 [ -n "$ACTIVE" ] || die "no camera sensor in the media graph"
 [ "$CAM" = auto ] && CAM=$ACTIVE
-[ "$CAM" = "$ACTIVE" ] || die "the $CAM camera is not wired up (the $ACTIVE one is): set-camera $CAM, then reboot"
+[ "$CAM" = "$ACTIVE" ] || die "the $CAM camera is not wired up (the $ACTIVE one is): set-dtb $CAM, then reboot"
 
 if [ "$CAM" = rear ]; then
     ENT=$REAR_ENT; W=1296; H=972; FMT=SGRBG10_1X10; PIX=BA10   # the data is RGGB

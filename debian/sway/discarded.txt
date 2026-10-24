@@ -1,4 +1,5 @@
 # debian/sway/discarded.txt - programs tried under sway and dropped, with
 # the reason, so nobody has to try them again.
-# Format: <PACKAGE>  # <date>: <reason>
-brightnessctl  # 2026-10-15: not needed - brightness.sh sets the backlight through logind
+# Format: <PACKAGE>  # <date>: <what it is> - <reason>
+brightnessctl           # 2026-10-15: backlight tool - not needed, brightness.sh sets the backlight through logind
+audacious               # 2026-10-23: music player - hardly fits sway; probably needs Xwayland, which these cards do not install

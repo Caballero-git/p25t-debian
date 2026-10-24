@@ -1,47 +1,40 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-2.0-only
-# set-dtb.sh - choose the device tree the P25T uses from the NEXT boot on:
-# which camera is wired up and which role the USB-C port has. The two are
-# independent settings; changing one keeps the other.
+# set-dtb - choose what the tablet starts with at the NEXT boot: which
+# camera works and what the USB-C port does. Also called set-role (the
+# same command).
 #
-#   set-dtb status
-#   set-dtb camera rear|front     (also: set-camera rear|front|status)
-#   set-dtb usb normal|host       (also: set-usb-role normal|host|status)
+#   set-dtb                  show both settings (also: set-dtb status)
+#   set-dtb rear | front     the camera: rear (GC5035) or front (GC02M2);
+#                            the SoC has one camera input, so one at a time
+#   set-dtb host | device    USB-C as a host: a keyboard, mouse or stick on
+#                            the port works, the port powers it and the
+#                            tablet does not charge; or as a device: the
+#                            tablet charges, and a PC on the cable gets a
+#                            serial console and a network link
+#                            ("normal" and "charge" mean device too)
+#   set-dtb rear host        both at once (any order)
+# A change keeps the other setting as it is. Nothing changes until a
+# reboot: the camera and the port role are fixed when the drivers start.
 #
-#   camera rear    the rear GC5035 (the usual one)
-#   camera front   the front GC02M2 instead. The SoC has one camera input,
-#                  so one camera at a time.
-#   usb normal     USB-C as a USB device: the PC gets a serial console and
-#                  a network link over the cable
-#   usb host       USB-C as a USB host: a wired keyboard/mouse works; no
-#                  console/network over that cable. The port powers the
-#                  attached device instead of charging the tablet.
-#
-# Why copies of DTBs: U-Boot always loads rk3566-teclast-p25t.dtb from
-# P25TBOOT (/boot/firmware), so the content at that name decides. It is a
-# copy of one of four variants, all kept on P25TBOOT by deploy_kernel.sh
-# and install_debian.sh:
-#   camera  usb     file
-#   rear    normal  rk3566-teclast-p25t-normal.dtb
+# How: U-Boot always loads rk3566-teclast-p25t.dtb from P25TBOOT
+# (/boot/firmware); that file is a copy of one of four device trees kept
+# next to it:
+#   camera  USB-C   file
+#   rear    device  rk3566-teclast-p25t-normal.dtb
 #   rear    host    rk3566-teclast-p25t-usbhost.dtb
-#   front   normal  rk3566-teclast-p25t-front.dtb
+#   front   device  rk3566-teclast-p25t-front.dtb
 #   front   host    rk3566-teclast-p25t-front-usbhost.dtb
-# A change copies the variant over the active DTB, compares the copy and
-# updates and checks CARD-SHA256SUMS. Nothing changes until a reboot: the
-# camera and the USB role are fixed when the drivers start.
-# Changes need root; the script asks sudo itself, so run it as the user.
-#
-# Install (the card build does the same):
-#   sudo install -m 755 set-dtb.sh /usr/local/bin/set-dtb
-#   sudo ln -sf set-dtb /usr/local/bin/set-usb-role
-#   sudo ln -sf set-dtb /usr/local/bin/set-camera
-
+# A change copies one over the active file, compares the copy, and
+# updates and checks CARD-SHA256SUMS. It needs root and asks sudo itself:
+# run it as the user.
 set -euo pipefail
 BOOT=${BOOT:-/boot/firmware}            # overridable only for testing
 ACTIVE=$BOOT/rk3566-teclast-p25t.dtb
 SUMS=$BOOT/CARD-SHA256SUMS
 die() { echo "set-dtb: $*" >&2; exit 1; }
-usage() { sed -n '7,9p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+usage() { sed -n '7,18p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+role() { [ "$1" = host ] && echo host || echo device; }   # internal "normal" = device
 
 variant() {   # variant <camera> <usb> -> file name on P25TBOOT
     case "$1:$2" in
@@ -66,15 +59,15 @@ current() {
 
 status() {
     if current; then
-        echo "next boot: camera $CAM, USB-C $USB ($(variant "$CAM" "$USB"))"
+        echo "next boot: camera $CAM, USB-C $(role "$USB") ($(variant "$CAM" "$USB"))"
     else
-        echo "next boot: unknown - the active DTB is a copy of none of the variants on $BOOT"
+        echo "next boot: unknown - the active device tree is a copy of none of the variants on $BOOT"
     fi
     local c u miss=""
     for c in rear front; do for u in normal host; do
         [ -f "$BOOT/$(variant $c $u)" ] || miss="$miss $(variant $c $u)"
     done; done
-    [ -z "$miss" ] || echo "not on the card:$miss (deploy_kernel.sh puts them there)"
+    [ -z "$miss" ] || echo "not on the card:$miss (tools/install_card.sh puts them there)"
     echo "running kernel: $(uname -r) $(uname -v)"
 }
 
@@ -92,36 +85,36 @@ sums_update() {
     echo "CARD-SHA256SUMS updated and checked"
 }
 
-# --- arguments: the name it is called by picks the setting --------------------
+# --- arguments: any of rear/front and host/device, in any order -----------
 ORIG=("$@")
-case "$(basename "$0")" in
-    set-usb-role*) WHAT=usb ;;
-    set-camera*) WHAT=camera ;;
-    *) WHAT=${1:-}; [ $# -gt 0 ] && shift ;;
-esac
-ARG=${1:-}
-case "$WHAT:$ARG" in
-    status:|usb:status|camera:status) status; exit 0 ;;
-    usb:normal|usb:host|camera:rear|camera:front) ;;
-    *) usage ;;
-esac
+WANTCAM=""; WANTUSB=""
+[ $# -gt 0 ] || set -- status
+for a in "$@"; do
+    case "$a" in
+        status)                 [ $# -eq 1 ] || usage; status; exit 0 ;;
+        rear|front)             WANTCAM=$a ;;
+        host)                   WANTUSB=host ;;
+        device|normal|charge)   WANTUSB=normal ;;
+        *)                      usage ;;
+    esac
+done
 
 [ "$(id -u)" -eq 0 ] || exec sudo "$0" "${ORIG[@]}"
 [ -n "${TESTING:-}" ] || mountpoint -q "$BOOT" || die "$BOOT is not mounted"
-current || die "the active DTB is a copy of none of the variants on $BOOT - sort that out first (set-dtb status)"
-if [ "$WHAT" = usb ]; then NEWCAM=$CAM; NEWUSB=$ARG; else NEWCAM=$ARG; NEWUSB=$USB; fi
+current || die "the active device tree is a copy of none of the variants on $BOOT - sort that out first (set-dtb status)"
+NEWCAM=${WANTCAM:-$CAM}; NEWUSB=${WANTUSB:-$USB}
 SRC=$BOOT/$(variant "$NEWCAM" "$NEWUSB")
-[ -f "$SRC" ] || die "$(basename "$SRC") is not on the card - deploy a kernel that has it (deploy_kernel.sh)"
+[ -f "$SRC" ] || die "$(basename "$SRC") is not on the card"
 
 if [ "$NEWCAM:$NEWUSB" = "$CAM:$USB" ]; then
-    echo "already set: camera $CAM, USB-C $USB - nothing to do"
+    echo "already set: camera $CAM, USB-C $(role "$USB") - nothing to do"
     exit 0
 fi
 cp "$SRC" "$ACTIVE"
 sync
 cmp -s "$SRC" "$ACTIVE" || die "$ACTIVE differs from $SRC after copying - CARD-SHA256SUMS not touched"
 sums_update
-echo "next boot: camera $NEWCAM, USB-C $NEWUSB (was: camera $CAM, USB-C $USB). Reboot now with: sudo reboot"
+echo "next boot: camera $NEWCAM, USB-C $(role "$NEWUSB") (now: camera $CAM, USB-C $(role "$USB")). Reboot with: sudo reboot"
 [ "$NEWUSB" = host ] && [ "$USB" != host ] &&
-    echo "Note: in host mode the USB-C port powers the attached device instead of charging the tablet."
+    echo "Note: as a host the USB-C port powers the attached device; the tablet does not charge."
 exit 0

@@ -4,34 +4,21 @@
 # does not: move it to discarded.txt with the reason.
 #
 # Web browsers
-firefox-esr
-epiphany-browser
-qutebrowser
-# Qt 6 programs under sway need these (Recommends of libqt6gui6, not
-# installed by default): without qt6-wayland no Qt 6 program starts
-qt6-wayland
-qt6-svg-plugins
-# SVG icons for GTK programs
-librsvg2-common
-# fonts for web pages
-fonts-liberation2
-# PDF reader (config in ~/.config/zathura is already there)
-zathura
-zathura-pdf-poppler
-# Music and video
-audacious
-mpv
+firefox-esr             # Firefox web browser (heavy for the tablet)
+epiphany-browser        # GNOME Web browser
+fonts-liberation2       # fonts for web pages
+librsvg2-common         # SVG icons in GTK programs
 # Databases
-sqlitebrowser
-# Touch: on-screen keyboard, edge gestures (not set up yet)
-wvkbd
-lisgd
+sqlitebrowser           # SQLite databases, graphical
+# Touch
+wvkbd                   # on-screen keyboard (not set up yet)
+lisgd                   # touch gestures from the screen edges (not set up yet)
 # Screenshots and clipboard
-grim
-slurp
-wl-clipboard
+grim                    # screenshot
+slurp                   # select a screen area (for grim)
+wl-clipboard            # clipboard from the command line (wl-copy, wl-paste)
 # GPU check and benchmark
-mesa-utils
-glmark2-es2-wayland
-# Input debugging (libinput debug-events)
-libinput-tools
+mesa-utils              # GPU information (eglinfo)
+glmark2-es2-wayland     # GPU benchmark
+# Input debugging
+libinput-tools          # show input events (libinput debug-events)

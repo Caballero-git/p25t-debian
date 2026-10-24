@@ -47,6 +47,25 @@ echo "--- sway: keyboard from /etc/default/keyboard"
 cat "$H/.config/sway/keyboard"
 chown -R "$U:$U" "$H/.config"
 
+echo "--- xdg-open defaults for the optional programs that are installed"
+# ~/.config/mimeapps.list lists imv (always installed); the programs of
+# tested.txt get their lines only when the build installed them.
+M=$H/.config/mimeapps.list
+add_default() {   # add_default <file.desktop> <mime type>...
+    local app=$1; shift
+    [ -f "/usr/share/applications/$app" ] || return 0
+    for t in "$@"; do
+        grep -q "^$t=" "$M" || echo "$t=$app" >> "$M"
+    done
+    echo "$app: $*"
+}
+add_default org.pwmt.zathura-pdf-poppler.desktop application/pdf
+add_default org.qutebrowser.qutebrowser.desktop text/html application/xhtml+xml \
+    x-scheme-handler/http x-scheme-handler/https
+add_default mpv.desktop audio/mpeg audio/flac audio/ogg audio/x-wav audio/mp4 \
+    video/mp4 video/x-matroska video/webm
+chown "$U:$U" "$M"
+
 echo "--- sway starts after the login on tty1"
 [ -f "$H/.profile" ] || install -m 644 -o "$U" -g "$U" /etc/skel/.profile "$H/.profile"
 grep -q 'sway/autostart.sh' "$H/.profile" || cat >> "$H/.profile" <<'EOT'

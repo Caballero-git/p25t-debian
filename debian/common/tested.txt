@@ -1,40 +1,39 @@
 # debian/common/tested.txt - optional programs, proven to work on the
-# tablet. tools/build_debian.sh asks whether to install them too.
-# Move a line to packages.txt to make it part of every card.
+# tablet. tools/build_debian.sh asks whether to install them too. Move a
+# line to packages.txt to make it part of every card.
 #
 # Editors
-emacs-nox
-emacs-common-non-dfsg
-elpa-csv-mode
-elpa-htmlize
-# Python development (compilers for pip packages with C parts)
-python3-dev
-python3-pip
-python3-venv
-python3-textual
-python3-doc
-python-is-python3
-build-essential
+emacs-nox               # Emacs text editor, console version
+emacs-common-non-dfsg   # Emacs manuals (C-h i)
+elpa-csv-mode           # Emacs: CSV files
+elpa-htmlize            # Emacs: export with syntax colours
+# Python development
+python3-dev             # Python headers, for pip packages with C parts
+python3-pip             # pip, Python package installer
+python3-venv            # Python virtual environments
+python3-textual         # Python: text user interfaces
+python3-doc             # Python documentation
+python-is-python3       # "python" runs python3
+build-essential         # C compiler and make
 # Shell tools
-git
-tmux
-ncdu
-tree
-ytree
-bat
-btop
-strace
-sqlite3
-aptitude
-dialog
-command-not-found
+git                     # version control
+tmux                    # several shells in one console, sessions that survive
+ncdu                    # disk usage, interactive
+tree                    # folders as a tree
+ytree                   # file manager, tree view
+bat                     # cat with colours (command: batcat)
+btop                    # running programs, CPU, memory, disks
+strace                  # trace a program's system calls
+sqlite3                 # SQLite database shell
+aptitude                # package manager, text menus
+dialog                  # dialog boxes for shell scripts
+command-not-found       # suggests the package for an unknown command
 # Hardware information and development
-acpi
-upower
-lm-sensors
-gpiod
-device-tree-compiler
-# Sync
-syncthing
-# Music player in the shell (ALSA only)
-alsaplayer-text
+acpi                    # battery state
+upower                  # power and battery information
+lm-sensors              # temperatures (sensors)
+gpiod                   # GPIO tools (gpioinfo, gpioget)
+device-tree-compiler    # dtc: device tree compiler
+# Sync, music
+syncthing               # keep folders in sync with other devices
+alsaplayer-text         # music player in the console

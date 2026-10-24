@@ -1,22 +1,16 @@
 # debian/sway/packages.txt - the sway desktop, on top of
 # debian/common/packages.txt. Only what is needed and proven on the tablet.
 #
-# Compositor, wallpaper, idle handling, terminal, launcher
-sway
-swaybg
-swayidle
-foot
-fuzzel
-# GPU: Mesa with the Panfrost driver
-libgl1-mesa-dri
-libegl1
-libgles2
-# Fonts
-fonts-dejavu-core
-fonts-terminus-otb
-# Screen rotation from the accelerometer (autorotate.sh)
-iio-sensor-proxy
-# Image viewer (its command is imv-wayland; plain imv is renameutils)
-imv
-# "Open with" for programs and links (xdg-open, ~/.config/mimeapps.list)
-xdg-utils
+sway                    # the desktop: tiling Wayland compositor
+swaybg                  # wallpaper
+swayidle                # dims and switches the screen off when idle
+foot                    # terminal
+fuzzel                  # application launcher (Super+d)
+libgl1-mesa-dri         # GPU driver (Mesa, Panfrost)
+libegl1                 # GPU interface (EGL)
+libgles2                # GPU interface (OpenGL ES)
+fonts-dejavu-core       # DejaVu fonts
+fonts-terminus-otb      # Terminus font for sway and foot
+iio-sensor-proxy        # accelerometer for screen rotation (autorotate.sh)
+imv                     # image viewer (command: imv-wayland)
+xdg-utils               # xdg-open: open a file or link with its program

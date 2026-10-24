@@ -11,10 +11,29 @@ without the card the tablet starts Android as before. Everything on the
 card is built from this repository and from sources downloaded at fixed
 versions; nothing downloaded is stored here.
 
-*Status (2026-10-22): being built up step by step.* The directions below
-stop where the work has arrived; each step is added once it has been
-done from a blank start. A card cannot be made yet from this repository
-alone.
+*Status (2026-10-24):* a working card can be made from this repository
+alone, following "Building a card" from a blank card and an empty work
+folder (done on 2026-10-22 on a Linux Mint 22 PC; the card boots, sway,
+Wi-Fi, Bluetooth and sound work). Work continues: an on-screen keyboard
+for use without any keyboard, a user guide, tools for updating a running
+card.
+
+* Tested on the tablet
+With a card made from this repository (2026-10-22..24):
+| What                              | Result                                                  |
+|-----------------------------------+---------------------------------------------------------|
+| boot, login, sudo                 | works                                                   |
+| Wi-Fi                             | works                                                   |
+| Bluetooth keyboard                | works (pair, trust, connect once)                       |
+| keyboard on USB-C (host)          | works                                                   |
+| sway, idle dim and screen off     | works                                                   |
+| speakers, headphones, volume keys | works                                                   |
+| rear camera (=cam-snap=)          | works, photos upright in all four tablet positions      |
+| mpv                               | smooth: MP3 at 320 kbit/s, video at 720p                |
+| zathura, qutebrowser              | work well                                               |
+Not yet checked on this card: front camera, screen rotation, battery
+level, USB-C as a device (console and network to a PC), SSH, the
+Bluetooth keyboard after a reboot.
 
 * What you need
 - The tablet: Teclast P25T, model P9A6 (Rockchip RK3566).
@@ -148,12 +167,12 @@ script explains itself in its header.
    The internal Android is untouched: without the card the tablet starts
    it as before.
    - The card starts with USB-C as a host (for the keyboard). It does
-     not charge in that mode. =set-usb-role normal= switches to USB-C as
+     not charge in that mode. =set-dtb device= switches to USB-C as
      a device from the next boot on: charging, and a serial console and
-     network for a PC over the cable; =set-usb-role host= switches back.
+     network for a PC over the cable; =set-dtb host= switches back.
    - Logins: the user and password of step 4 on the screen, or over SSH
-     as =<USER>@<HOST>.local= when the tablet is on Wi-Fi (in normal
-     mode also at =192.168.7.2= over the USB-C cable).
+     as =<USER>@<HOST>.local= when the tablet is on Wi-Fi (with USB-C as
+     a device also at =192.168.7.2= over the cable).
    - A Bluetooth keyboard: pair it once with =bluetoothctl= (=scan on=,
      =pair <ADDRESS>=, =trust <ADDRESS>=, =connect <ADDRESS>=).
    - Every boot writes a log onto the card (=P25TBOOT/logs/=, readable on
@@ -163,7 +182,8 @@ Being added: what to check after the first boot, and what to do if the
 tablet does not start.
 
 * Programs
-Each folder of =debian/= has four lists, one package per line:
+Each folder of =debian/= has four lists, one package per line followed
+by what it is (e.g. =zathura  # PDF viewer=):
 | List             | Installed?                     | What                               |
 |------------------+--------------------------------+------------------------------------|
 | =packages.txt=   | always                         | needed, and proven on the tablet   |
@@ -174,13 +194,28 @@ Each folder of =debian/= has four lists, one package per line:
 adds the desktop. A program moves from =under_test.txt= to =tested.txt=
 (or =packages.txt=) once it works well, or to =discarded.txt= with the
 reason. The cards install without Recommends: a program that needs one of
-its Recommends gets it listed next to it.
+its Recommends gets it listed next to it (qutebrowser: =qt6-wayland=). On
+a sway card the build also makes the installed optional programs the
+defaults for =xdg-open= (PDF: zathura, web: qutebrowser, music and video:
+mpv).
 
 To add another desktop, copy =debian/sway/= to =debian/<NAME>/= and
 change its lists, =setup.sh= (run inside the new system after
 =debian/common/setup.sh=) and =config/= (the user's =~/.config=).
 
 * On the tablet
+The card carries a few small tools of its own (in =/usr/local/bin= and
+=/usr/local/sbin=). A first install does not need them, but they make
+later changes easy and safe: each one checks what it does and keeps the
+card's checksum list (=P25TBOOT/CARD-SHA256SUMS=) up to date. Tools for
+updating the kernel and the start-up system on a running card are being
+added.
+| Tool                            | What                                                       |
+|---------------------------------+------------------------------------------------------------|
+| =set-dtb= (also =set-role=)     | camera (=rear=, =front=) and USB-C role (=host=, =device=) for the next boot |
+| =cam-snap=, =rear-snap=, =front-snap= | take a PNG photo                                     |
+| =p25t-audio=                    | volume and speaker/headphone switching (used by the volume keys) |
+| =p25t-bootlog=                  | a status report onto the card, a minute after boot and every 4 min |
 - A Wi-Fi network later (or another one): =<SSID>= is the network's name;
   it asks for the password.
   #+begin_example
@@ -192,8 +227,9 @@ change its lists, =setup.sh= (run inside the new system after
   the text console. Other consoles (Ctrl+Alt+F2 ... F6) and SSH logins
   stay text.
 - Cameras: =cam-snap= (also =rear-snap=, =front-snap=) takes a PNG photo;
-  =set-camera rear|front= and =set-usb-role normal|host= choose the
-  device tree for the next boot.
+  =set-dtb rear|front= and =set-dtb host|device= choose the camera and
+  the USB-C role for the next boot (=set-dtb= alone shows both; the same
+  command is also called =set-role=).
 
 * Repository map
 | Path             | What                                         |

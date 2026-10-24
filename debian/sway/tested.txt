@@ -1,3 +1,12 @@
 # debian/sway/tested.txt - optional programs for the sway desktop, proven
 # to work on the tablet. tools/build_debian.sh asks whether to install
 # them too. Move a line to packages.txt to make it part of every sway card.
+#
+# 2026-10-24: zathura and qutebrowser work well; mpv plays MP3 at 320
+# kbit/s and 720p video smoothly. Candidates for packages.txt.
+zathura                 # PDF viewer (keys like vi; config in ~/.config/zathura)
+zathura-pdf-poppler     # zathura's PDF support
+qutebrowser             # web browser driven by the keyboard (Qt 6)
+qt6-wayland             # lets Qt 6 programs run under sway (needed by qutebrowser)
+qt6-svg-plugins         # SVG icons in Qt 6 programs
+mpv                     # video and music player
