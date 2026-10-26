@@ -289,10 +289,15 @@ echo "--- accelerometer: the P25T mount matrix for iio-sensor-proxy"
 install -D -m 644 "$F/61-p25t-sensor.hwdb" /etc/udev/hwdb.d/61-p25t-sensor.hwdb
 systemd-hwdb update
 
-echo "--- boot report onto the card (P25TBOOT/logs/boot-N-debian.txt)"
+echo "--- status report onto the card, on demand (P25TBOOT/logs/boot-N-debian.txt)"
+# Not run by itself: "sudo p25t-bootlog" writes one report, readable on the
+# PC when the tablet shows nothing. While testing new features, the timer
+# repeats it (1 min after boot, then every 4 min):
+#     sudo systemctl enable --now p25t-bootlog.timer      (disable to stop)
 cat > /usr/local/sbin/p25t-bootlog <<'EOT'
 #!/bin/sh
 # Write a status report onto the card: /boot/firmware/logs/boot-N-debian.txt
+# (N = the boot count of the start-up system). Run: sudo p25t-bootlog
 D=/boot/firmware/logs
 [ -d $D ] || exit 0
 N=$(cat $D/bootcount 2>/dev/null || echo 0)
@@ -341,7 +346,7 @@ fi
 echo "--- services"
 # Only getty@tty1 is enabled; logind starts tty2-tty6 on demand.
 systemctl enable systemd-networkd.service systemd-resolved.service \
-    ssh.service p25t-gadget.service p25t-bootlog.timer \
+    ssh.service p25t-gadget.service \
     getty@tty1.service wpa_supplicant@wlan0.service \
     bluetooth.service p25t-bluetooth.service triggerhappy.service
 # No login on the USB serial port: with no USB host reading it (no cable,

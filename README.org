@@ -11,12 +11,12 @@ without the card the tablet starts Android as before. Everything on the
 card is built from this repository and from sources downloaded at fixed
 versions; nothing downloaded is stored here.
 
-*Status (2026-10-24):* a working card can be made from this repository
+*Status (2026-10-26):* a working card can be made from this repository
 alone, following "Building a card" from a blank card and an empty work
 folder (done on 2026-10-22 on a Linux Mint 22 PC; the card boots, sway,
-Wi-Fi, Bluetooth and sound work). Work continues: an on-screen keyboard
-for use without any keyboard, a user guide, tools for updating a running
-card.
+Wi-Fi, Bluetooth and sound work). A running card can take a new kernel or
+start-up system ("Updating a running card"). Work continues: an
+on-screen keyboard for use without any keyboard, a user guide.
 
 * Tested on the tablet
 With a card made from this repository (2026-10-22..24):
@@ -29,11 +29,12 @@ With a card made from this repository (2026-10-22..24):
 | sway, idle dim and screen off     | works                                                   |
 | speakers, headphones, volume keys | works                                                   |
 | rear camera (=cam-snap=)          | works, photos upright in all four tablet positions      |
+| front camera (=set-dtb front=)    | works, photos upright in all four tablet positions      |
+| screen rotation                   | follows the tablet, smoothly, in all four positions     |
 | mpv                               | smooth: MP3 at 320 kbit/s, video at 720p                |
 | zathura, qutebrowser              | work well                                               |
-Not yet checked on this card: front camera, screen rotation, battery
-level, USB-C as a device (console and network to a PC), SSH, the
-Bluetooth keyboard after a reboot.
+Not yet checked on this card: battery level, USB-C as a device (console
+and network to a PC), SSH, the Bluetooth keyboard after a reboot.
 
 * What you need
 - The tablet: Teclast P25T, model P9A6 (Rockchip RK3566).
@@ -204,18 +205,25 @@ change its lists, =setup.sh= (run inside the new system after
 =debian/common/setup.sh=) and =config/= (the user's =~/.config=).
 
 * On the tablet
-The card carries a few small tools of its own (in =/usr/local/bin= and
-=/usr/local/sbin=). A first install does not need them, but they make
-later changes easy and safe: each one checks what it does and keeps the
-card's checksum list (=P25TBOOT/CARD-SHA256SUMS=) up to date. Tools for
-updating the kernel and the start-up system on a running card are being
-added.
-| Tool                            | What                                                       |
-|---------------------------------+------------------------------------------------------------|
-| =set-dtb= (also =set-role=)     | camera (=rear=, =front=) and USB-C role (=host=, =device=) for the next boot |
-| =cam-snap=, =rear-snap=, =front-snap= | take a PNG photo                                     |
-| =p25t-audio=                    | volume and speaker/headphone switching (used by the volume keys) |
-| =p25t-bootlog=                  | a status report onto the card, a minute after boot and every 4 min |
+Commands of the card (in =/usr/local/bin=):
+| Command                               | What                                                          |
+|---------------------------------------+---------------------------------------------------------------|
+| =set-dtb= (also =set-role=)           | camera (=rear=, =front=) and USB-C role (=host=, =device=) for the next boot; alone it shows both |
+| =cam-snap=, =rear-snap=, =front-snap= | take a PNG photo                                              |
+What the card does by itself:
+- Volume keys and headphone jack: the keys change the volume, the
+  speakers are off while headphones are plugged in (=p25t-audio=, run by
+  triggerhappy).
+- At every boot the start-up system writes a log onto the card
+  (=P25TBOOT/logs/=, readable on the PC).
+- =sudo p25t-bootlog= adds a report of the running Debian there
+  (=boot-N-debian.txt=: failed services, network, warnings, kernel log),
+  for when the tablet shows nothing. While testing new features it can
+  repeat by itself, 1 min after boot and then every 4 min:
+  =sudo systemctl enable --now p25t-bootlog.timer= (=disable --now=
+  stops it). It is off by default: a card in daily use should not write
+  to its boot partition all day.
+Other things to do on the tablet:
 - A Wi-Fi network later (or another one): =<SSID>= is the network's name;
   it asks for the password.
   #+begin_example
@@ -226,10 +234,50 @@ added.
   after a 3 s countdown; a key during it, or a file =~/.no-sway=, keeps
   the text console. Other consoles (Ctrl+Alt+F2 ... F6) and SSH logins
   stay text.
-- Cameras: =cam-snap= (also =rear-snap=, =front-snap=) takes a PNG photo;
-  =set-dtb rear|front= and =set-dtb host|device= choose the camera and
-  the USB-C role for the next boot (=set-dtb= alone shows both; the same
-  command is also called =set-role=).
+
+* Updating a running card
+The scripts in =tablet/= put a new kernel or a new start-up system on a
+card in use, without making a new card. They were used at every step
+while the kernel patches and device trees of this repository were
+developed and tested, and they are needed again whenever a feature is
+added or changed. Each one checks what it copies, keeps what it replaces
+(on =P25TBOOT= and in =~/boot-backups/= on the tablet), keeps
+=CARD-SHA256SUMS= up to date and can put the previous version back
+(=restore=). Each explains itself in its header.
+| Script                       | What                                                          |
+|------------------------------+---------------------------------------------------------------|
+| =tablet/install_modules.sh=  | the modules and the Wi-Fi firmware of a new kernel            |
+| =tablet/deploy_kernel.sh=    | the new kernel and its four device trees (the =set-dtb= choice stays) |
+| =tablet/deploy_initramfs.sh= | a new start-up system (stage 1)                               |
+=<USER>@<HOST>.local= is the tablet on Wi-Fi (or =<USER>@192.168.7.2=
+over the USB-C cable); =<TAG>= names the update in the backup files, for
+example the date (=20261026=).
+- A new kernel: build it as in steps 1-2 (after changing a patch or the
+  configuration), copy the pack and the scripts to the tablet, then on
+  the tablet install the modules and the kernel, and reboot:
+  #+begin_example
+  scp -r <WORK>/p25t-debian/build/kernel-pack <WORK>/p25t-debian/tablet <USER>@<HOST>.local:
+  #+end_example
+  #+begin_example
+  sudo bash tablet/install_modules.sh <TAG> kernel-pack
+  sudo bash tablet/deploy_kernel.sh <TAG> kernel-pack
+  sudo reboot
+  #+end_example
+  If the new kernel does not start, the header of =deploy_kernel.sh= says
+  how to go back (two files on =P25TBOOT= with the card in the PC, then
+  =restore= on the tablet).
+- A new start-up system: build it as in step 3, copy it with its
+  checksum (the =*= takes both files) and the scripts, then on the
+  tablet:
+  #+begin_example
+  scp -r <WORK>/p25t-debian/build/stage1/initramfs.cpio.gz* <WORK>/p25t-debian/tablet <USER>@<HOST>.local:
+  #+end_example
+  #+begin_example
+  sudo bash tablet/deploy_initramfs.sh initramfs.cpio.gz
+  sudo reboot
+  #+end_example
+  =sudo bash tablet/deploy_initramfs.sh restore= puts the previous one
+  back.
 
 * Repository map
 | Path             | What                                         |
@@ -240,6 +288,7 @@ added.
 | =initramfs/=      | the start-up system's script (=init=)        |
 | =debian/=         | package lists and settings, per desktop      |
 | =tools/=          | scripts run on =pc_linux=                    |
+| =tablet/=         | scripts run on the tablet, to update a card  |
 | =build/=          | made by the scripts, never committed         |
 
 * Licence
